@@ -101,8 +101,7 @@ public final class Rasterizer {
         }
         DoubleArrayPool.returnArray(outline);
     }
-
-    // ═══ 曲线间填充（暂不提供脏矩形版本，可自行添加） ═══
+    // ═══ 曲线间填充（暂不提供脏矩形版本） ═══
     public static void fillBetweenCurves(float[] dst, int w, int h,
                                          float[] x1, float[] y1,
                                          float[] x2, float[] y2,
@@ -168,14 +167,14 @@ public final class Rasterizer {
 
             if (rule == FillRule.EVEN_ODD) {
                 for (int i = 0; i + 1 < active.size(); i += 2) {
-                    fillSpan(dst, w, y, active.get(i).x, active.get(i + 1).x, color);
+                    fillSpan(dst, w, y, active.get(i).x, active.get(i+1).x, color);
                 }
             } else {
                 int wind = 0;
                 for (int i = 0; i < active.size(); i++) {
                     wind += active.get(i).wind;
                     if (wind != 0 && i + 1 < active.size()) {
-                        fillSpan(dst, w, y, active.get(i).x, active.get(i + 1).x, color);
+                        fillSpan(dst, w, y, active.get(i).x, active.get(i+1).x, color);
                     }
                 }
             }
@@ -185,25 +184,35 @@ public final class Rasterizer {
 
     private static void fillSpan(float[] dst, int w, int y,
                                  double x1, double x2, float[] color) {
-        int start = Math.max(0, (int) Math.ceil(x1));
-        int end = Math.min(w, (int) Math.floor(x2));
-        if (start >= end) return;
+        if (x1 > x2) { double tmp = x1; x1 = x2; x2 = tmp; } // 确保升序
+        int start = (int) Math.floor(x1);
+        int end   = (int) Math.floor(x2);
+        if (start >= w || end < 0 || start > end) return;
+
         float srcR = color[0], srcG = color[1], srcB = color[2], srcA = color[3];
-        if (srcA >= 1.0f) {
-            for (int x = start; x < end; x++) {
+        for (int x = start; x <= end && x < w; x++) {
+            if (x < 0) continue; // 简单跳过负像素
+            double cover = 1.0;
+            if (x == start) cover = (start + 1) - x1;      // 左边缘部分覆盖
+            if (x == end)   cover = x2 - end;               // 右边缘部分覆盖
+            // 处理单像素跨度 (start == end) 的情况
+            if (start == end) cover = x2 - x1;
+            if (cover <= 0.0) continue;
+            float alpha = (float)(srcA * cover);
+            if (alpha >= 1.0f) {
                 int idx = (y * w + x) * 4;
-                dst[idx] = srcR; dst[idx+1] = srcG;
-                dst[idx+2] = srcB; dst[idx+3] = srcA;
-            }
-        } else {
-            float invSrcA = 1.0f - srcA;
-            for (int x = start; x < end; x++) {
+                dst[idx]   = srcR;
+                dst[idx+1] = srcG;
+                dst[idx+2] = srcB;
+                dst[idx+3] = srcA;
+            } else {
                 int idx = (y * w + x) * 4;
                 float dR = dst[idx], dG = dst[idx+1], dB = dst[idx+2], dA = dst[idx+3];
-                dst[idx]   = srcR * srcA + dR * invSrcA;
-                dst[idx+1] = srcG * srcA + dG * invSrcA;
-                dst[idx+2] = srcB * srcA + dB * invSrcA;
-                dst[idx+3] = srcA + dA * invSrcA;
+                float invAlpha = 1.0f - alpha;
+                dst[idx]   = srcR * alpha + dR * invAlpha;
+                dst[idx+1] = srcG * alpha + dG * invAlpha;
+                dst[idx+2] = srcB * alpha + dB * invAlpha;
+                dst[idx+3] = alpha + dA * invAlpha;
             }
         }
     }

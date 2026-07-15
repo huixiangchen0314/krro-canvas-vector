@@ -84,13 +84,14 @@ public class Shape {
         // 4b. 左侧边（包括顶点 Join）
         poly.add(leftX[0], leftY[0]);
         for (int i = 1; i < n; i++) {
-            addLeftJoin(poly,
-                    leftX[i - 1], leftY[i - 1],
-                    rightX[i - 1], rightY[i - 1],
-                    leftX[i], leftY[i],
-                    rightX[i], rightY[i],
-                    coords[2 * i], coords[2 * i + 1],
-                    halfW[i - 1], halfW[i], join, miterLimit);
+//            addLeftJoin(poly,
+//                    leftX[i - 1], leftY[i - 1],
+//                    rightX[i - 1], rightY[i - 1],
+//                    leftX[i], leftY[i],
+//                    rightX[i], rightY[i],
+//                    coords[2 * i], coords[2 * i + 1],
+//                    halfW[i - 1], halfW[i], join, miterLimit);
+            poly.add(leftX[i], leftY[i]);
         }
 
         // 4c. 终点 Cap（从左边缘过渡到右边缘）
