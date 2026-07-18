@@ -1,5 +1,6 @@
 (ns top.kzre.krro.canvas.vector.core
-  "矢量图层门面：负责矢量路径的光栅化与合成。"
+  "矢量图层门面：负责矢量路径的光栅化与合成。
+   使用图层 :transform 矩阵，通过 Bezier2D.affine 变换曲线后再光栅化。"
   (:require
     [top.kzre.krro.canvas.core.core :as c]
     [top.kzre.krro.canvas.core.layer.util :as lu]
@@ -11,13 +12,12 @@
     (java.util UUID)
     (top.kzre.krro.canvas.raster Renderer)
     (top.kzre.krro.canvas.vector ArcLengthSampleWidthFunc Cap FillRule Join Rasterizer)
-    (top.kzre.curve.bezier2d Curve)
+    (top.kzre.curve.bezier2d Bezier2D Curve)
     (top.kzre.krro.curve.bezier2d CurvePool)))
 
 ;; ═══════════════════════════════════════════════
 ;; 图层构造函数
 ;; ═══════════════════════════════════════════════
-
 (defn make-vector-layer
   [& {:keys [id name opacity blend-mode visible? backend]
       :or   {id         (keyword (str "layer-" (UUID/randomUUID)))
@@ -37,48 +37,23 @@
      :backend      backend
      :paths-map    {}
      :path-order   []
-     :cache        nil
-     :dirty-start  nil
-     :dirty-rect   nil}
+     :cache        nil}
     (select-keys opts [:x :y :scale-x :scale-y :rotation :mask])))
 
 ;; ═══════════════════════════════════════════════
-;; 状态管理（纯函数）
+;; 绘制辅助函数（不变）
 ;; ═══════════════════════════════════════════════
-
-(defn clear-cache [layer]
-  (assoc layer :cache nil :dirty-start nil :dirty-rect nil))
-
-(defn invalidate-from
-  "标记从指定路径 ID（含）开始的所有路径为脏。"
-  [layer id]
-  (let [order (:path-order layer)
-        idx   (if id
-                (let [i (.indexOf order id)]
-                  (if (>= i 0) i 0))
-                0)]
-    (assoc layer :dirty-start idx)))
-
-(defn add-dirty-rect [layer rect]
-  (assoc layer :dirty-rect rect))
-
-;; ═══════════════════════════════════════════════
-;; 绘制辅助函数
-;; ═══════════════════════════════════════════════
-
 (defn- draw-fill!
-  [^floats cache w h ^Curve curve fill-style dirty-rect]
+  [^floats cache w h ^Curve curve fill-style]
   (let [color     (:color fill-style)
         fill-rule (case (:fill-rule fill-style)
                     :even-odd FillRule/EVEN_ODD
                     :non-zero FillRule/NON_ZERO
                     FillRule/EVEN_ODD)]
-    (if dirty-rect
-      (Rasterizer/fill cache w h curve color fill-rule (int-array dirty-rect))
-      (Rasterizer/fill cache w h curve color fill-rule))))
+    (Rasterizer/fill cache w h curve color fill-rule)))
 
 (defn- draw-stroke!
-  [^floats cache w h ^Curve curve stroke-style dirty-rect width-samples arc-params]
+  [^floats cache w h ^Curve curve stroke-style width-samples arc-params]
   (let [color     (:color stroke-style)
         cap       (case (:cap stroke-style)
                     :butt Cap/BUTT :round Cap/ROUND :square Cap/SQUARE Cap/BUTT)
@@ -92,88 +67,85 @@
     (cond
       has-var-width
       (let [width-fn (ArcLengthSampleWidthFunc. (double-array arc-params) (double-array width-samples))]
-        (if dirty-rect
-          (Rasterizer/strokeVariable cache w h curve width-fn color cap join (int-array dirty-rect))
-          (Rasterizer/strokeVariable cache w h curve width-fn color cap join)))
+        (Rasterizer/strokeVariable cache w h curve width-fn color cap join))
 
       (number? width)
-      (if dirty-rect
-        (Rasterizer/strokeFixedDirty cache w h curve (float width) color cap join (int-array dirty-rect))
-        (Rasterizer/strokeFixed cache w h curve (float width) color cap join))
+      (Rasterizer/strokeFixed cache w h curve (float width) color cap join)
       :else
       nil)))
 
 ;; ═══════════════════════════════════════════════
-;; 单路径渲染
+;; 从仿射矩阵提取平移、缩放、旋转
 ;; ═══════════════════════════════════════════════
+(defn- matrix->affine-params
+  "从6元素仿射矩阵 [a,b,c,d,tx,ty] 中提取 dx, dy, sx, sy, rot。
+   假设矩阵没有斜切。"
+  [transform]
+  (let [a (nth transform 0)
+        b (nth transform 1)
+        c (nth transform 2)
+        d (nth transform 3)
+        tx (nth transform 4)
+        ty (nth transform 5)
+        sx (Math/sqrt (+ (* a a) (* b b)))
+        sy (Math/sqrt (+ (* c c) (* d d)))
+        rot (Math/atan2 b a)]
+    {:dx tx :dy ty :sx sx :sy sy :rot rot}))
 
-(defn- render-path!
-  [^floats cache w h path dirty-rect]
+;; ═══════════════════════════════════════════════
+;; 带变换的单路径渲染
+;; ═══════════════════════════════════════════════
+(defn- render-path-transformed!
+  [^floats cache w h path layer]
   (when-let [style (:style path)]
-    (let [{:keys [^Curve curve borrow?]}
-          (case (:path-type path)
-            :bezier
-            (let [c (CurvePool/borrowCurve)]
-              (bezier/edn->curve! c (:bezier-curve path))
-              {:curve c :borrow? true})
-            :catmull-rom
-            (let [cr-obj (cr/edn->crcurve (:cr-curve path))
-                  c (.getBezierCurve cr-obj)]
-              {:curve c :borrow? false})
-            nil)]
+    (let [transform (get layer :transform lu/identity-matrix)
+          a (nth transform 0) b (nth transform 1)
+          c (nth transform 2) d (nth transform 3)
+          tx (nth transform 4) ty (nth transform 5)
+          curve (case (:path-type path)
+                  :bezier
+                  (let [c (Curve.)]
+                    (bezier/edn->curve! c (:bezier-curve path))
+                    c)
+                  :catmull-rom
+                  (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
+                    (.getBezierCurve cr-obj))
+                  nil)]
       (when curve
-        (try
+        (let [transformed (Bezier2D/transform curve a b c d tx ty)]
           (when-let [fill (:fill style)]
-            (draw-fill! cache w h curve fill dirty-rect))
+            (draw-fill! cache w h transformed fill))
           (when-let [stroke (:stroke style)]
-            (draw-stroke! cache w h curve stroke dirty-rect
-                          (:width-samples path) (:arc-params path)))
-          (finally
-            (when borrow?
-              (CurvePool/returnCurve curve))))))))
+            (draw-stroke! cache w h transformed stroke
+                          (:width-samples path) (:arc-params path))))))))
 
 ;; ═══════════════════════════════════════════════
-;; 主光栅化逻辑
+;; 主光栅化逻辑（总是全量重建，应用变换）
 ;; ═══════════════════════════════════════════════
-
 (defn- rasterize-paths!
   [layer w h]
-  (let [order      (:path-order layer)
-        paths      (:paths-map layer)
-        dirty-i    (:dirty-start layer)
-        rect       (:dirty-rect layer)
-        old-cache  (:cache layer)
-        full-redraw? (or (nil? old-cache)
-                         (and (nil? dirty-i) (nil? rect))
-                         (nil? dirty-i))
-        start-idx  (if full-redraw? 0 (or dirty-i 0))
-        ^floats cache (if full-redraw?
-                        (float-array (* w h 4) 0.0)
-                        old-cache)]
-    (doseq [idx (range start-idx (count order))]
-      (let [id   (nth order idx)
-            path (get paths id)]
-        (render-path! cache w h path rect)))
-    (assoc layer :cache cache :dirty-start nil :dirty-rect nil)))
+  (let [order (:path-order layer)
+        paths (:paths-map layer)
+        ^floats cache (float-array (* w h 4) 0.0)]
+    (doseq [id order]
+      (when-let [path (get paths id)]
+        (render-path-transformed! cache w h path layer)))
+    (assoc layer :cache cache)))
 
 ;; ═══════════════════════════════════════════════
-;; 合成与渲染 API
+;; 合成与渲染 API（单位矩阵混合）
 ;; ═══════════════════════════════════════════════
-
 (defn render-vector-layer!
-  [layer ^floats data w h]
-  (let [pre-rect (:dirty-rect layer)
-        layer'   (rasterize-paths! layer w h)
+  "渲染矢量图层到目标数组。光栅化时已应用图层变换，混合使用单位矩阵。"
+  [layer ^floats data w h _opts]
+  (let [layer'    (rasterize-paths! layer w h)
         ^floats cache (:cache layer')
         blend-mode (util/blend-mode-str (:blend-mode layer') :normal)
         opacity   (float (get layer' :opacity 1.0))
-        transform (get layer' :transform lu/identity-matrix)]
-    (if pre-rect
-      (let [dirty-arr (int-array pre-rect)]
-        (Renderer/blendTransformedDirty data cache w h transform blend-mode opacity dirty-arr))
-      (Renderer/blendTransformed data cache w h transform blend-mode opacity))
+        identity-matrix (float-array [1 0 0 1 0 0])]
+    (Renderer/blendTransformed data cache w h identity-matrix blend-mode opacity)
     layer'))
 
 (defmethod c/render-layer! :vector
-  [layer ^floats data w h]
-  (render-vector-layer! layer data w h))
+  [layer ^floats data w h opts]
+  (render-vector-layer! layer data w h opts))
