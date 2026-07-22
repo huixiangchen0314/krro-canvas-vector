@@ -112,31 +112,21 @@
   [layer w h]
   (let [order (:path-order layer)
         paths (:paths-map layer)
-        ^floats cache (float-array (* w h 4) 0.0)]
+        ^floats pixels (float-array (* w h 4) 0.0)]
     (doseq [id order]
       (when-let [path (get paths id)]
-        (render-path-transformed! cache w h path layer)))
-    (assoc layer :cache cache)))
+        (render-path-transformed! pixels w h path layer)))
+    pixels))
 
-;; ═══════════════════════════════════════════════
-;; 合成与渲染 API（单位矩阵混合）
-;; ═══════════════════════════════════════════════
-(defn render-vector-layer!
-  "渲染矢量图层到目标数组。光栅化时已应用图层变换，混合使用单位矩阵。"
+(defmethod c/render-layer! :vector
   [layer ^floats data w h {:keys [dirty-tiles
                                   tile-size] :as opts
                            :or {tile-size 64}}]
-  (let [layer'    (rasterize-paths! layer w h)
-        ^floats cache (:cache layer')
-        blend-mode (lu/blend-mode-str (:blend-mode layer') :normal)
-        opacity   (float (get layer' :opacity 1.0))
+  (let [^floats pixles  (rasterize-paths! layer w h)
+        blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
+        opacity   (float (get layer :opacity 1.0))
         java-dirty  (when (seq dirty-tiles)
                       (HashSet. ^Collection dirty-tiles))]
     (TiledPixelRenderer/blendTransformedTiled data  w h
-                                              cache tile-size
-                                              lu/identity-matrix blend-mode opacity java-dirty)
-    layer'))
-
-(defmethod c/render-layer! :vector
-  [layer ^floats data w h opts]
-  (render-vector-layer! layer data w h opts))
+                                              pixles tile-size
+                                              lu/identity-matrix blend-mode opacity java-dirty)))

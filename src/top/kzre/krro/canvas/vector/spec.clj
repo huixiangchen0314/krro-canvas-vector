@@ -34,18 +34,11 @@
 (s/def ::paths-map (s/map-of ::id ::path :conform-keys true))
 (s/def ::path-order (s/coll-of ::id :kind vector? :distinct true))
 
-;; ── 脏矩形定义（仅支持一个矩形） ────────────────
-(s/def ::rect (s/tuple int? int? int? int?))
-(s/def ::dirty-rect (s/nilable ::rect))   ;; 单个矩形或 nil
 
-;; ── 缓存与增量信息 ──────────────────────────────
-(s/def ::cache (s/nilable ::layer-spec/float-array))
-(s/def ::dirty-start (s/nilable nat-int?))
 
 ;; ── 矢量图层属性 ────────────────────────────────
 (s/def ::vector-props
-  (s/keys :req-un [::paths-map ::path-order]
-          :opt-un [::cache ::dirty-start ::dirty-rect]))
+  (s/keys :req-un [::paths-map ::path-order]))
 
 ;; 注册到图层系统
 (defmethod layer-spec/layer-spec :vector [_] ::vector-props)
