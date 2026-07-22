@@ -18,10 +18,11 @@
       CurveRasterizer
       FillRule
       Join
+      RasterizerConfig
       TiledPixelRenderer)))
 
 ;; ═══════════════════════════════════════════════
-;; 图层构造函数
+;; 图层构造函数（不变）
 ;; ═══════════════════════════════════════════════
 (defn make-vector-layer
   [& {:keys [id name opacity blend-mode visible? backend]
@@ -46,30 +47,33 @@
     (select-keys opts [:x :y :scale-x :scale-y :rotation])))
 
 ;; ═══════════════════════════════════════════════
-;; 内部工具
+;; 创建光栅化器（根据图层配置）
 ;; ═══════════════════════════════════════════════
-(defn- antialiasing [layer]
-  (if (:antialiased layer)
-    AntiAlias/SSAA_2x2
-    AntiAlias/DISABLED))
+(defn- build-rasterizer [layer]
+  (let [config (RasterizerConfig.)]
+    ;; 设置抗锯齿
+    (if (:antialiased layer)
+      (.setAntiAlias config AntiAlias/SSAA_2x2)
+      (.setAntiAlias config AntiAlias/DISABLED))
+    ;; 其他配置可按需从图层 meta 读取，此处使用默认值
+    (CurveRasterizer. config)))
 
 ;; ═══════════════════════════════════════════════
-;; 绘制辅助函数（接受抗锯齿参数）
+;; 绘制辅助函数（接受光栅化器实例）
 ;; ═══════════════════════════════════════════════
 (defn- draw-fill!
-  [^floats cache w h ^Curve curve fill-style ^AntiAlias antialiasing
+  [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve fill-style
    ^Set dirty-tiles tile-size]
   (let [color     (:color fill-style)
         fill-rule (case (:fill-rule fill-style)
                     :even-odd FillRule/EVEN_ODD
                     :non-zero FillRule/NON_ZERO
                     FillRule/EVEN_ODD)]
-    (CurveRasterizer/fill cache w h curve color fill-rule antialiasing
-                          dirty-tiles (int tile-size))))
+    (.fill rasterizer cache w h curve color fill-rule dirty-tiles (int tile-size))))
 
 (defn- draw-stroke!
-  [^floats cache w h ^Curve curve stroke-style width-samples arc-params
-   ^AntiAlias antialiasing ^Set dirty-tiles tile-size]
+  [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve stroke-style
+   width-samples arc-params ^Set dirty-tiles tile-size]
   (let [color     (:color stroke-style)
         cap       (case (:cap stroke-style)
                     :butt Cap/BUTT :round Cap/ROUND :square Cap/SQUARE Cap/BUTT)
@@ -83,20 +87,21 @@
     (cond
       has-var-width
       (let [width-fn (ArcLengthSampleWidthFunc. (double-array arc-params) (double-array width-samples))]
-        (CurveRasterizer/strokeVariable cache w h curve width-fn color cap join
-                                        antialiasing dirty-tiles (int tile-size)))
+        (.strokeVariable rasterizer cache w h curve width-fn color cap join
+                         dirty-tiles (int tile-size)))
 
       (number? width)
-      (CurveRasterizer/strokeFixed cache w h curve (float width) color cap join
-                                   antialiasing dirty-tiles (int tile-size))
+      (.strokeFixed rasterizer cache w h curve (float width) color cap join
+                    dirty-tiles (int tile-size))
       :else
       nil)))
 
 ;; ═══════════════════════════════════════════════
-;; 带变换的单路径渲染（传递脏瓦片和抗锯齿）
+;; 带变换的单路径渲染（传递光栅化器）
 ;; ═══════════════════════════════════════════════
 (defn- render-path-transformed!
-  [^floats cache w h path layer ^AntiAlias antialiasing ^Set dirty-tiles tile-size]
+  [^CurveRasterizer rasterizer ^floats cache w h path layer
+   ^Set dirty-tiles tile-size]
   (when-let [style (:style path)]
     (let [transform (get layer :transform lu/identity-matrix)
           a (nth transform 0) b (nth transform 1)
@@ -114,23 +119,23 @@
       (when curve
         (let [transformed (Bezier2D/transform curve a b c d tx ty)]
           (when-let [fill (:fill style)]
-            (draw-fill! cache w h transformed fill antialiasing dirty-tiles tile-size))
+            (draw-fill! rasterizer cache w h transformed fill dirty-tiles tile-size))
           (when-let [stroke (:stroke style)]
-            (draw-stroke! cache w h transformed stroke
+            (draw-stroke! rasterizer cache w h transformed stroke
                           (:width-samples path) (:arc-params path)
-                          antialiasing dirty-tiles tile-size)))))))
+                          dirty-tiles tile-size)))))))
 
 ;; ═══════════════════════════════════════════════
-;; 主光栅化逻辑（支持增量渲染和抗锯齿）
+;; 主光栅化逻辑（接受光栅化器）
 ;; ═══════════════════════════════════════════════
 (defn- rasterize-paths!
-  [layer w h ^AntiAlias antialiasing ^Set dirty-tiles tile-size]
+  [layer w h ^CurveRasterizer rasterizer ^Set dirty-tiles tile-size]
   (let [order (:path-order layer)
         paths (:paths-map layer)
         ^floats pixels (float-array (* w h 4) 0.0)]
     (doseq [id order]
       (when-let [path (get paths id)]
-        (render-path-transformed! pixels w h path layer antialiasing dirty-tiles tile-size)))
+        (render-path-transformed! rasterizer pixels w h path layer dirty-tiles tile-size)))
     pixels))
 
 ;; ═══════════════════════════════════════════════
@@ -139,10 +144,10 @@
 (defmethod c/render-layer! :vector
   [layer ^floats data w h {:keys [dirty-tiles tile-size]
                            :or {tile-size 64}}]
-  (let [antialiasing (antialiasing layer)
-        pixels        (rasterize-paths! layer w h antialiasing dirty-tiles tile-size)
-        blend-mode   (lu/blend-mode-str (:blend-mode layer) :normal)
-        opacity      (float (get layer :opacity 1.0))]
+  (let [rasterizer  (build-rasterizer layer)
+        pixels      (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
+        blend-mode  (lu/blend-mode-str (:blend-mode layer) :normal)
+        opacity     (float (get layer :opacity 1.0))]
     (TiledPixelRenderer/blendTransformedTiled data w h
                                               pixels tile-size
                                               lu/identity-matrix blend-mode opacity dirty-tiles)
