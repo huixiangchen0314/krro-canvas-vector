@@ -2,18 +2,21 @@
   "矢量图层门面：负责矢量路径的光栅化与合成。
    使用图层 :transform 矩阵，通过 Bezier2D.affine 变换曲线后再光栅化。"
   (:require
-    [top.kzre.krro.canvas.core.core :as c]
-    [top.kzre.krro.canvas.core.layer.util :as lu]
-    [top.kzre.krro.canvas.raster.util :as util]
-    [top.kzre.krro.canvas.vector.spec]
-    [top.kzre.krro.curve.bezier2d.core :as bezier]
-    [top.kzre.krro.curve.catmullrom2d.core :as cr])
+   [top.kzre.krro.canvas.core.core :as c]
+   [top.kzre.krro.canvas.core.layer.util :as lu]
+   [top.kzre.krro.canvas.vector.spec]
+   [top.kzre.krro.curve.bezier2d.core :as bezier]
+   [top.kzre.krro.curve.catmullrom2d.core :as cr])
   (:import
-    (java.util UUID)
-    (top.kzre.krro.canvas.raster Renderer)
-    (top.kzre.krro.canvas.vector ArcLengthSampleWidthFunc Cap FillRule Join Rasterizer)
-    (top.kzre.curve.bezier2d Bezier2D Curve)
-    (top.kzre.krro.curve.bezier2d CurvePool)))
+    (java.util Collection HashSet UUID)
+   (top.kzre.curve.bezier2d Bezier2D Curve)
+   (top.kzre.krro.canvas.vector
+    ArcLengthSampleWidthFunc
+    Cap
+    FillRule
+    Join
+    Rasterizer
+    TiledPixelRenderer)))
 
 ;; ═══════════════════════════════════════════════
 ;; 图层构造函数
@@ -38,7 +41,7 @@
      :paths-map    {}
      :path-order   []
      :cache        nil}
-    (select-keys opts [:x :y :scale-x :scale-y :rotation :mask])))
+    (select-keys opts [:x :y :scale-x :scale-y :rotation])))
 
 ;; ═══════════════════════════════════════════════
 ;; 绘制辅助函数（不变）
@@ -74,23 +77,6 @@
       :else
       nil)))
 
-;; ═══════════════════════════════════════════════
-;; 从仿射矩阵提取平移、缩放、旋转
-;; ═══════════════════════════════════════════════
-(defn- matrix->affine-params
-  "从6元素仿射矩阵 [a,b,c,d,tx,ty] 中提取 dx, dy, sx, sy, rot。
-   假设矩阵没有斜切。"
-  [transform]
-  (let [a (nth transform 0)
-        b (nth transform 1)
-        c (nth transform 2)
-        d (nth transform 3)
-        tx (nth transform 4)
-        ty (nth transform 5)
-        sx (Math/sqrt (+ (* a a) (* b b)))
-        sy (Math/sqrt (+ (* c c) (* d d)))
-        rot (Math/atan2 b a)]
-    {:dx tx :dy ty :sx sx :sy sy :rot rot}))
 
 ;; ═══════════════════════════════════════════════
 ;; 带变换的单路径渲染
@@ -137,13 +123,18 @@
 ;; ═══════════════════════════════════════════════
 (defn render-vector-layer!
   "渲染矢量图层到目标数组。光栅化时已应用图层变换，混合使用单位矩阵。"
-  [layer ^floats data w h _opts]
+  [layer ^floats data w h {:keys [dirty-tiles
+                                  tile-size] :as opts
+                           :or {tile-size 64}}]
   (let [layer'    (rasterize-paths! layer w h)
         ^floats cache (:cache layer')
-        blend-mode (util/blend-mode-str (:blend-mode layer') :normal)
+        blend-mode (lu/blend-mode-str (:blend-mode layer') :normal)
         opacity   (float (get layer' :opacity 1.0))
-        identity-matrix (float-array [1 0 0 1 0 0])]
-    (Renderer/blendTransformed data cache w h identity-matrix blend-mode opacity)
+        java-dirty  (when (seq dirty-tiles)
+                      (HashSet. ^Collection dirty-tiles))]
+    (TiledPixelRenderer/blendTransformedTiled data  w h
+                                              cache tile-size
+                                              lu/identity-matrix blend-mode opacity java-dirty)
     layer'))
 
 (defmethod c/render-layer! :vector
