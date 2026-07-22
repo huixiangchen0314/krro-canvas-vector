@@ -1,22 +1,23 @@
 (ns top.kzre.krro.canvas.vector.core
   "矢量图层门面：负责矢量路径的光栅化与合成。
-   使用图层 :transform 矩阵，通过 Bezier2D.affine 变换曲线后再光栅化。"
+   使用图层 :transform 矩阵，通过 Bezier2D.affine 变换曲线后再光栅化。
+   支持基于脏瓦片的增量渲染。"
   (:require
-   [top.kzre.krro.canvas.core.core :as c]
-   [top.kzre.krro.canvas.core.layer.util :as lu]
-   [top.kzre.krro.canvas.vector.spec]
-   [top.kzre.krro.curve.bezier2d.core :as bezier]
-   [top.kzre.krro.curve.catmullrom2d.core :as cr])
+    [top.kzre.krro.canvas.core.core :as c]
+    [top.kzre.krro.canvas.core.layer.util :as lu]
+    [top.kzre.krro.canvas.vector.spec]
+    [top.kzre.krro.curve.bezier2d.core :as bezier]
+    [top.kzre.krro.curve.catmullrom2d.core :as cr])
   (:import
-    (java.util Collection HashSet UUID)
-   (top.kzre.curve.bezier2d Bezier2D Curve)
-   (top.kzre.krro.canvas.vector
-    ArcLengthSampleWidthFunc
-    Cap
-    FillRule
-    Join
-    Rasterizer
-    TiledPixelRenderer)))
+    (java.util Set UUID)
+    (top.kzre.curve.bezier2d Bezier2D Curve)
+    (top.kzre.krro.canvas.vector
+      ArcLengthSampleWidthFunc
+      Cap
+      CurveRasterizer
+      FillRule
+      Join
+      TiledPixelRenderer)))
 
 ;; ═══════════════════════════════════════════════
 ;; 图层构造函数
@@ -44,19 +45,20 @@
     (select-keys opts [:x :y :scale-x :scale-y :rotation])))
 
 ;; ═══════════════════════════════════════════════
-;; 绘制辅助函数（不变）
+;; 绘制辅助函数（接受脏瓦片参数）
 ;; ═══════════════════════════════════════════════
 (defn- draw-fill!
-  [^floats cache w h ^Curve curve fill-style]
+  [^floats cache w h ^Curve curve fill-style ^Set dirty-tiles tile-size]
   (let [color     (:color fill-style)
         fill-rule (case (:fill-rule fill-style)
                     :even-odd FillRule/EVEN_ODD
                     :non-zero FillRule/NON_ZERO
                     FillRule/EVEN_ODD)]
-    (Rasterizer/fill cache w h curve color fill-rule)))
+    (CurveRasterizer/fill cache w h curve color fill-rule dirty-tiles (int tile-size))))
 
 (defn- draw-stroke!
-  [^floats cache w h ^Curve curve stroke-style width-samples arc-params]
+  [^floats cache w h ^Curve curve stroke-style width-samples arc-params
+   ^Set dirty-tiles tile-size]
   (let [color     (:color stroke-style)
         cap       (case (:cap stroke-style)
                     :butt Cap/BUTT :round Cap/ROUND :square Cap/SQUARE Cap/BUTT)
@@ -70,19 +72,20 @@
     (cond
       has-var-width
       (let [width-fn (ArcLengthSampleWidthFunc. (double-array arc-params) (double-array width-samples))]
-        (Rasterizer/strokeVariable cache w h curve width-fn color cap join))
+        (CurveRasterizer/strokeVariable cache w h curve width-fn color cap join
+                                        dirty-tiles (int tile-size)))
 
       (number? width)
-      (Rasterizer/strokeFixed cache w h curve (float width) color cap join)
+      (CurveRasterizer/strokeFixed cache w h curve (float width) color cap join
+                                   dirty-tiles (int tile-size))
       :else
       nil)))
 
-
 ;; ═══════════════════════════════════════════════
-;; 带变换的单路径渲染
+;; 带变换的单路径渲染（传递脏瓦片）
 ;; ═══════════════════════════════════════════════
 (defn- render-path-transformed!
-  [^floats cache w h path layer]
+  [^floats cache w h path layer dirty-tiles tile-size]
   (when-let [style (:style path)]
     (let [transform (get layer :transform lu/identity-matrix)
           a (nth transform 0) b (nth transform 1)
@@ -100,43 +103,35 @@
       (when curve
         (let [transformed (Bezier2D/transform curve a b c d tx ty)]
           (when-let [fill (:fill style)]
-            (draw-fill! cache w h transformed fill))
+            (draw-fill! cache w h transformed fill dirty-tiles tile-size))
           (when-let [stroke (:stroke style)]
             (draw-stroke! cache w h transformed stroke
-                          (:width-samples path) (:arc-params path))))))))
+                          (:width-samples path) (:arc-params path)
+                          dirty-tiles tile-size)))))))
 
 ;; ═══════════════════════════════════════════════
-;; 主光栅化逻辑（总是全量重建，应用变换）
+;; 主光栅化逻辑（支持增量渲染）
 ;; ═══════════════════════════════════════════════
 (defn- rasterize-paths!
-  [layer w h]
+  [layer w h dirty-tiles tile-size]
   (let [order (:path-order layer)
         paths (:paths-map layer)
-        ^floats cache (float-array (* w h 4) 0.0)]
+        ^floats pixels (float-array (* w h 4) 0.0)]
     (doseq [id order]
       (when-let [path (get paths id)]
-        (render-path-transformed! cache w h path layer)))
-    (assoc layer :cache cache)))
+        (render-path-transformed! pixels w h path layer dirty-tiles tile-size)))
+    pixels))
 
 ;; ═══════════════════════════════════════════════
-;; 合成与渲染 API（单位矩阵混合）
+;; 合成与渲染 API（全量或增量）
 ;; ═══════════════════════════════════════════════
-(defn render-vector-layer!
-  "渲染矢量图层到目标数组。光栅化时已应用图层变换，混合使用单位矩阵。"
-  [layer ^floats data w h {:keys [dirty-tiles
-                                  tile-size] :as opts
-                           :or {tile-size 64}}]
-  (let [layer'    (rasterize-paths! layer w h)
-        ^floats cache (:cache layer')
-        blend-mode (lu/blend-mode-str (:blend-mode layer') :normal)
-        opacity   (float (get layer' :opacity 1.0))
-        java-dirty  (when (seq dirty-tiles)
-                      (HashSet. ^Collection dirty-tiles))]
-    (TiledPixelRenderer/blendTransformedTiled data  w h
-                                              cache tile-size
-                                              lu/identity-matrix blend-mode opacity java-dirty)
-    layer'))
-
 (defmethod c/render-layer! :vector
-  [layer ^floats data w h opts]
-  (render-vector-layer! layer data w h opts))
+  [layer ^floats data w h {:keys [dirty-tiles tile-size]
+                           :or {tile-size 64}}]
+  (let [pixels     (rasterize-paths! layer w h dirty-tiles tile-size)
+        blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
+        opacity    (float (get layer :opacity 1.0))]
+    (TiledPixelRenderer/blendTransformedTiled data w h
+                                              pixels tile-size
+                                              lu/identity-matrix blend-mode opacity dirty-tiles)
+    layer))

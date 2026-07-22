@@ -1,25 +1,18 @@
 package top.kzre.krro.canvas.vector;
 
 import top.kzre.curve.bezier2d.*;
+import top.kzre.krro.util.pool.DoublesPools;
+import top.kzre.krro.util.tile.TiledCanvas;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.function.DoubleUnaryOperator;
 
 /**
  * 矢量光栅化器：将矢量形状（填充、描边）渲染到图层自己的像素缓冲区。
- * <p>
- * 职责：
- * <ul>
- *   <li>曲线自适应扁平化（委托 {@link CurveUtils}）</li>
- *   <li>描边轮廓生成（委托 {@link Shape}）</li>
- *   <li>多边形扫描线填充（带 alpha 混合的简单 source-over）</li>
- *   <li>脏矩形优化：仅渲染指定的单个矩形区域，减少像素操作</li>
- * </ul>
- * 不处理图层级混合模式、不透明度或变换——这些由光栅图层的合成器完成。
+ * 支持基于瓦片脏区域的增量渲染。
+ * 所有临时 double[] 使用 {@link DoublesPools} 进行池化，避免频繁 GC。
  */
-public final class Rasterizer {
+public final class CurveRasterizer {
 
     private static final double FLATNESS = 0.25;
     private static final double MITER_LIMIT = 4.0;
@@ -27,88 +20,131 @@ public final class Rasterizer {
     // ═══ 填充（全画布） ═══
     public static void fill(float[] dst, int w, int h,
                             Curve curve, float[] color, FillRule rule) {
-        fill(dst, w, h, curve, color, rule, null);
+        fill(dst, w, h, curve, color, rule, null, 0);
     }
 
-    // ═══ 填充（脏矩形优化，接受单个 int[] 矩形或 null） ═══
+    /**
+     * 填充，支持脏瓦片集合增量渲染。
+     *
+     * @param dst        目标数组
+     * @param w          画布宽度
+     * @param h          画布高度
+     * @param curve      曲线
+     * @param color      RGBA 颜色
+     * @param rule       填充规则
+     * @param dirtyTiles 脏瓦片键集合（null 表示全量渲染，空集合表示无脏，非空表示增量渲染）
+     * @param tileSize   瓦片边长（仅在 dirtyTiles 非空时有效）
+     */
     public static void fill(float[] dst, int w, int h,
                             Curve curve, float[] color, FillRule rule,
-                            int[] dirtyRect) {
+                            Set<Long> dirtyTiles, int tileSize) {
         double[] flat = CurveUtils.flattenCurveAdaptive(curve, FLATNESS);
         if (flat.length < 4) {
-            DoubleArrayPool.returnArray(flat);
+            DoublesPools.getPool(flat.length).release(flat);
             return;
         }
-        if (dirtyRect == null || dirtyRect.length < 4) {
+        if (dirtyTiles == null) {
+            // 全量渲染
             fillPolygon(dst, w, h, flat, color, rule);
+        } else if (dirtyTiles.isEmpty()) {
+            // 无脏区域，直接返回
         } else {
-            double[] clipped = clipPolygonToRect(flat,
-                    dirtyRect[0], dirtyRect[1], dirtyRect[2], dirtyRect[3]);
-            if (clipped != null && clipped.length >= 6) {
-                fillPolygon(dst, w, h, clipped, color, rule);
+            for (long key : dirtyTiles) {
+                int tx = TiledCanvas.unpackTx(key);
+                int ty = TiledCanvas.unpackTy(key);
+                int startX = Math.max(0, tx * tileSize);
+                int startY = Math.max(0, ty * tileSize);
+                int endX = Math.min(startX + tileSize, w);
+                int endY = Math.min(startY + tileSize, h);
+                if (startX >= endX || startY >= endY) continue;
+                int rectW = endX - startX;
+                int rectH = endY - startY;
+                double[] clipped = clipPolygonToRect(flat, startX, startY, rectW, rectH);
+                if (clipped != null && clipped.length >= 6) {
+                    fillPolygon(dst, w, h, clipped, color, rule);
+                    DoublesPools.getPool(clipped.length).release(clipped);
+                }
             }
         }
-        DoubleArrayPool.returnArray(flat);
+        DoublesPools.getPool(flat.length).release(flat);
     }
 
     // ═══ 固定宽度描边（全画布） ═══
     public static void strokeFixed(float[] dst, int w, int h,
                                    Curve curve, float width,
                                    float[] color, Cap cap, Join join) {
-        strokeVariable(dst, w, h, curve, t -> width, color, cap, join, null);
+        strokeVariable(dst, w, h, curve, t -> width, color, cap, join, null, 0);
     }
 
-    // ═══ 固定宽度描边（脏矩形优化） ═══
-    public static void strokeFixedDirty(float[] dst, int w, int h,
-                                        Curve curve, float width,
-                                        float[] color, Cap cap, Join join,
-                                        int[] dirtyRect) {
-        strokeVariable(dst, w, h, curve, t -> width, color, cap, join, dirtyRect);
+    /**
+     * 固定宽度描边，支持脏瓦片集合。
+     */
+    public static void strokeFixed(float[] dst, int w, int h,
+                                   Curve curve, float width,
+                                   float[] color, Cap cap, Join join,
+                                   Set<Long> dirtyTiles, int tileSize) {
+        strokeVariable(dst, w, h, curve, t -> width, color, cap, join, dirtyTiles, tileSize);
     }
 
     // ═══ 可变宽度描边（全画布） ═══
     public static void strokeVariable(float[] dst, int w, int h,
                                       Curve curve, DoubleUnaryOperator widthFunc,
                                       float[] color, Cap cap, Join join) {
-        strokeVariable(dst, w, h, curve, widthFunc, color, cap, join, null);
+        strokeVariable(dst, w, h, curve, widthFunc, color, cap, join, null, 0);
     }
 
-    // ═══ 可变宽度描边（脏矩形优化，核心实现） ═══
+    /**
+     * 可变宽度描边，支持脏瓦片集合。
+     */
     public static void strokeVariable(float[] dst, int w, int h,
                                       Curve curve, DoubleUnaryOperator widthFunc,
                                       float[] color, Cap cap, Join join,
-                                      int[] dirtyRect) {
+                                      Set<Long> dirtyTiles, int tileSize) {
         double[] flat = CurveUtils.flattenCurveAdaptive(curve, FLATNESS);
         if (flat.length < 4) {
-            DoubleArrayPool.returnArray(flat);
+            DoublesPools.getPool(flat.length).release(flat);
             return;
         }
         double[] outline = Shape.createStrokeOutline(flat, widthFunc, cap, join, MITER_LIMIT);
-        DoubleArrayPool.returnArray(flat);
+        DoublesPools.getPool(flat.length).release(flat);
 
         if (outline.length < 6) {
-            DoubleArrayPool.returnArray(outline);
+            DoublesPools.getPool(outline.length).release(outline);
             return;
         }
-        if (dirtyRect == null || dirtyRect.length < 4) {
+        if (dirtyTiles == null) {
             fillPolygon(dst, w, h, outline, color, FillRule.EVEN_ODD);
+        } else if (dirtyTiles.isEmpty()) {
+            // 无脏，直接返回
         } else {
-            double[] clipped = clipPolygonToRect(outline,
-                    dirtyRect[0], dirtyRect[1], dirtyRect[2], dirtyRect[3]);
-            if (clipped != null && clipped.length >= 6) {
-                fillPolygon(dst, w, h, clipped, color, FillRule.EVEN_ODD);
+            for (long key : dirtyTiles) {
+                int tx = TiledCanvas.unpackTx(key);
+                int ty = TiledCanvas.unpackTy(key);
+                int startX = Math.max(0, tx * tileSize);
+                int startY = Math.max(0, ty * tileSize);
+                int endX = Math.min(startX + tileSize, w);
+                int endY = Math.min(startY + tileSize, h);
+                if (startX >= endX || startY >= endY) continue;
+                int rectW = endX - startX;
+                int rectH = endY - startY;
+                double[] clipped = clipPolygonToRect(outline, startX, startY, rectW, rectH);
+                if (clipped != null && clipped.length >= 6) {
+                    fillPolygon(dst, w, h, clipped, color, FillRule.EVEN_ODD);
+                    DoublesPools.getPool(clipped.length).release(clipped);
+                }
             }
         }
-        DoubleArrayPool.returnArray(outline);
+        DoublesPools.getPool(outline.length).release(outline);
     }
-    // ═══ 曲线间填充（暂不提供脏矩形版本） ═══
+
+    // ═══ 曲线间填充（暂不支持脏瓦片） ═══
     public static void fillBetweenCurves(float[] dst, int w, int h,
                                          float[] x1, float[] y1,
                                          float[] x2, float[] y2,
                                          float[] color) {
         int n = Math.min(x1.length, x2.length);
         if (n < 2) return;
-        double[] poly = DoubleArrayPool.borrow(n * 4);
+        double[] poly = DoublesPools.getPool(n * 4).acquire();
         int idx = 0;
         for (int i = 0; i < n; i++) {
             poly[idx++] = x1[i];
@@ -119,7 +155,7 @@ public final class Rasterizer {
             poly[idx++] = y2[i];
         }
         fillPolygon(dst, w, h, poly, color, FillRule.EVEN_ODD);
-        DoubleArrayPool.returnArray(poly);
+        DoublesPools.getPool(poly.length).release(poly);
     }
 
     // ═══ 多边形填充（扫描线） ═══
@@ -184,18 +220,17 @@ public final class Rasterizer {
 
     private static void fillSpan(float[] dst, int w, int y,
                                  double x1, double x2, float[] color) {
-        if (x1 > x2) { double tmp = x1; x1 = x2; x2 = tmp; } // 确保升序
+        if (x1 > x2) { double tmp = x1; x1 = x2; x2 = tmp; }
         int start = (int) Math.floor(x1);
         int end   = (int) Math.floor(x2);
         if (start >= w || end < 0 || start > end) return;
 
         float srcR = color[0], srcG = color[1], srcB = color[2], srcA = color[3];
         for (int x = start; x <= end && x < w; x++) {
-            if (x < 0) continue; // 简单跳过负像素
+            if (x < 0) continue;
             double cover = 1.0;
-            if (x == start) cover = (start + 1) - x1;      // 左边缘部分覆盖
-            if (x == end)   cover = x2 - end;               // 右边缘部分覆盖
-            // 处理单像素跨度 (start == end) 的情况
+            if (x == start) cover = (start + 1) - x1;
+            if (x == end)   cover = x2 - end;
             if (start == end) cover = x2 - x1;
             if (cover <= 0.0) continue;
             float alpha = (float)(srcA * cover);
@@ -255,12 +290,12 @@ public final class Rasterizer {
 
             if (inside1 && inside2) {
                 out.add(x2, y2);
-            } else if (inside1 && !inside2) {
+            } else if (inside1) {
                 double t = (limit - v1) / (v2 - v1);
                 double ix = x1 + t * (x2 - x1);
                 double iy = y1 + t * (y2 - y1);
                 out.add(ix, iy);
-            } else if (!inside1 && inside2) {
+            } else if (inside2) {
                 double t = (limit - v1) / (v2 - v1);
                 double ix = x1 + t * (x2 - x1);
                 double iy = y1 + t * (y2 - y1);
@@ -269,6 +304,7 @@ public final class Rasterizer {
             }
         }
         double[] result = out.toArray();
+        out.dispose(); // 释放构建器内部数组
         return result.length >= 6 ? result : null;
     }
 
