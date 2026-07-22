@@ -26,6 +26,16 @@ public class CurveUtils {
         return builder.toArray();
     }
 
+    /** 只扁平化单个 Segment，用于分段渲染 */
+    public static double[] flattenSegment(Segment seg, double flatness) {
+        double flatnessSq = flatness * flatness;
+        DoubleArrayBuilder builder = new DoubleArrayBuilder(32);
+        flattenSegmentIterative(seg, flatnessSq, builder);
+        // 需要添加段的终点
+        builder.add(seg.getD().getX(), seg.getD().getY());
+        return builder.toArray();
+    }
+
     private static void flattenSegmentIterative(Segment seg, double flatnessSq,
                                                 DoubleArrayBuilder builder) {
         Deque<Segment> stack = new ArrayDeque<>();
@@ -33,7 +43,7 @@ public class CurveUtils {
         while (!stack.isEmpty()) {
             Segment s = stack.pop();
             if (Segments.isFlat(s, flatnessSq)) {
-                builder.add(s.getA().getX(), s.getA().getY());  // 使用双参数版本
+                builder.add(s.getA().getX(), s.getA().getY());
             } else {
                 Segment left = new Segment(null, null, null, null);
                 Segment right = new Segment(null, null, null, null);

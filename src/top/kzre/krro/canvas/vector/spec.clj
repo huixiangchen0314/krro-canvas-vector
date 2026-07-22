@@ -37,8 +37,10 @@
 
 
 ;; ── 矢量图层属性 ────────────────────────────────
+(s/def ::antialiased boolean?)
 (s/def ::vector-props
-  (s/keys :req-un [::paths-map ::path-order]))
+  (s/keys :req-un [::paths-map ::path-order]
+          :opt-un [::antialiased]))
 
 ;; 注册到图层系统
 (defmethod layer-spec/layer-spec :vector [_] ::vector-props)
