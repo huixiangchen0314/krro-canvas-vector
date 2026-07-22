@@ -26,12 +26,7 @@ public class ScanlineFiller {
             float x1 = xs[i], y1 = ys[i];
             float x2 = xs[j], y2 = ys[j];
             if (y1 == y2) continue;
-            Edge edge;
-            if (y1 < y2) {
-                edge = new Edge(x1, y1, x2, y2);
-            } else {
-                edge = new Edge(x2, y2, x1, y1);
-            }
+            Edge edge = new Edge(x1, y1, x2, y2);
             int y = Math.max(0, edge.ymin);
             if (y < h) buckets.get(y).add(edge);
         }
@@ -51,13 +46,13 @@ public class ScanlineFiller {
                 int wind = 0;
                 double spanStart = 0;
                 boolean inside = false;
-                for (int i = 0; i < active.size(); i++) {
-                    wind += active.get(i).winding;
+                for (Edge edge : active) {
+                    wind += edge.winding;
                     if (wind != 0 && !inside) {
-                        spanStart = active.get(i).x;
+                        spanStart = edge.x;
                         inside = true;
                     } else if (wind == 0 && inside) {
-                        fillSpan(dst, w, y, spanStart, active.get(i).x, color);
+                        fillSpan(dst, w, y, spanStart, edge.x, color);
                         inside = false;
                     }
                 }
@@ -104,7 +99,7 @@ public class ScanlineFiller {
         }
     }
 
-    // ---------- 边数据结构 ----------
+    // ---------- 修复后的 Edge 类 ----------
     private static class Edge {
         final int ymin, ymax;
         final double dx;
@@ -112,11 +107,21 @@ public class ScanlineFiller {
         double x;
 
         Edge(float x1, float y1, float x2, float y2) {
-            this.ymin = (int) Math.ceil(y1);
-            this.ymax = (int) Math.ceil(y2);
-            this.dx = (x2 - x1) / (y2 - y1);
-            this.x = x1 + dx * (ymin - y1);
-            this.winding = (y1 < y2) ? 1 : -1;
+            if (y1 < y2) {
+                // 边从下到上，winding = +1
+                this.ymin = (int) Math.ceil(y1);
+                this.ymax = (int) Math.ceil(y2);
+                this.dx = (x2 - x1) / (y2 - y1);
+                this.x = x1 + dx * (ymin - y1);
+                this.winding = 1;
+            } else {
+                // 边从上到下，winding = -1
+                this.ymin = (int) Math.ceil(y2);
+                this.ymax = (int) Math.ceil(y1);
+                this.dx = (x2 - x1) / (y2 - y1);  // 分母为负，dx 自动正确
+                this.x = x2 + dx * (ymin - y2);   // 从 y2 开始插值
+                this.winding = -1;
+            }
         }
     }
 }
