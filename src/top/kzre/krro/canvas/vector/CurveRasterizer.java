@@ -1,7 +1,5 @@
 package top.kzre.krro.canvas.vector;
 
-import top.kzre.colorutils.blend.Blends;
-import top.kzre.colorutils.blend.PorterDuff;
 import top.kzre.curve.bezier2d.*;
 import top.kzre.krro.util.pool.DoublesPools;
 import top.kzre.krro.util.tile.TiledCanvas;
@@ -71,10 +69,6 @@ public final class CurveRasterizer {
     }
 
     // ═══ 可变宽度描边（核心实现） ═══
-    /**
-     * 核心描边实现：逐 Segment 扁平化、生成轮廓并立即填充到目标缓冲区。
-     * 仅在第一段添加起点 Cap，最后一段添加终点 Cap，中间段仅靠 Join 连接，避免重叠伪影。
-     */
     public static void strokeVariable(float[] dst, int w, int h,
                                       Curve curve, DoubleUnaryOperator widthFunc,
                                       float[] color, Cap cap, Join join,
@@ -84,6 +78,10 @@ public final class CurveRasterizer {
         if (segments.isEmpty()) return;
 
         int totalSegments = segments.size();
+        double prevRightEndX = 0, prevRightEndY = 0;
+        double prevVertexX = 0, prevVertexY = 0;
+        boolean hasPrev = false;
+
         for (int i = 0; i < totalSegments; i++) {
             Segment seg = segments.get(i);
             double[] segFlat = CurveUtils.flattenSegment(seg, FLATNESS);
@@ -99,6 +97,38 @@ public final class CurveRasterizer {
                 double globalT = segStartT + t * (segEndT - segStartT);
                 return widthFunc.applyAsDouble(globalT);
             };
+
+            // 计算当前段起点和终点的法线及关键边缘点（用于段间连接）
+            int lastIdx = (segFlat.length / 2 - 1) * 2;
+            double dx0 = segFlat[2] - segFlat[0];
+            double dy0 = segFlat[3] - segFlat[1];
+            double len0 = Math.hypot(dx0, dy0);
+            double nx0 = 0, ny0 = 1;
+            if (len0 > 1e-12) { nx0 = -dy0 / len0; ny0 = dx0 / len0; }
+            double hw0 = segWidthFunc.applyAsDouble(0.0) / 2.0;
+            double currLeftX = segFlat[0] + nx0 * hw0;
+            double currLeftY = segFlat[1] + ny0 * hw0;
+
+            double dx1 = segFlat[lastIdx] - segFlat[lastIdx - 2];
+            double dy1 = segFlat[lastIdx + 1] - segFlat[lastIdx - 1];
+            double len1 = Math.hypot(dx1, dy1);
+            double nx1 = 0, ny1 = 1;
+            if (len1 > 1e-12) { nx1 = -dy1 / len1; ny1 = dx1 / len1; }
+            double hw1 = segWidthFunc.applyAsDouble(1.0) / 2.0;
+            double endRightX = segFlat[lastIdx] - nx1 * hw1;
+            double endRightY = segFlat[lastIdx + 1] - ny1 * hw1;
+
+            // 非首段：绘制连接前一段右侧终点到当前段左侧起点的多边形
+            if (hasPrev) {
+                double[] joinOutline = buildJoinPolygon(join,
+                        prevRightEndX, prevRightEndY,
+                        currLeftX, currLeftY,
+                        prevVertexX, prevVertexY, hw0, MITER_LIMIT);
+                if (joinOutline != null && joinOutline.length >= 6) {
+                    renderOutlinePolygon(dst, w, h, joinOutline, color, dirtyTiles, tileSize, antiAlias);
+                    DoublesPools.getPool(joinOutline.length).release(joinOutline);
+                }
+            }
 
             // 仅在第一段添加起点 Cap，最后一段添加终点 Cap
             boolean capStart = (i == 0);
@@ -116,6 +146,13 @@ public final class CurveRasterizer {
             // 立即填充该段轮廓到目标缓冲区
             renderOutlinePolygon(dst, w, h, outline, color, dirtyTiles, tileSize, antiAlias);
             DoublesPools.getPool(outline.length).release(outline);
+
+            // 保存当前段终点信息用于下一段连接
+            prevRightEndX = endRightX;
+            prevRightEndY = endRightY;
+            prevVertexX = segFlat[lastIdx];
+            prevVertexY = segFlat[lastIdx + 1];
+            hasPrev = true;
         }
     }
 
@@ -188,6 +225,7 @@ public final class CurveRasterizer {
             CapGenerator.addCap(cap, coords[2*last], coords[2*last+1], -lx, -ly, halfW[last],
                     rightX[last], rightY[last], leftX[last], leftY[last], poly, false);
         }
+
         // 右侧边反向 + Join
         poly.add(rightX[n - 1], rightY[n - 1]);
         for (int i = n - 2; i >= 0; i--) {
@@ -199,6 +237,21 @@ public final class CurveRasterizer {
         }
 
         return poly.toArray();
+    }
+
+    // 辅助：构建段间连接多边形
+    private static double[] buildJoinPolygon(Join join,
+                                             double prevRightX, double prevRightY,
+                                             double currLeftX, double currLeftY,
+                                             double vertexX, double vertexY,
+                                             double halfWidth, double miterLimit) {
+        DoubleArrayBuilder b = new DoubleArrayBuilder(12);
+        b.add(prevRightX, prevRightY);
+        JoinGenerator.addJoin(join, prevRightX, prevRightY, currLeftX, currLeftY,
+                vertexX, vertexY, halfWidth, miterLimit, b);
+        b.add(currLeftX, currLeftY);
+        b.add(vertexX, vertexY);
+        return b.toArray();
     }
 
     // 辅助：将轮廓多边形渲染到目标（支持脏区域裁剪）
@@ -284,14 +337,10 @@ public final class CurveRasterizer {
                 }
                 if (count > 0) {
                     int didx = (y * dw + x) * 4;
-                    // 子像素平均颜色（非预乘）
                     float srcR = r / count;
                     float srcG = g / count;
                     float srcB = b / count;
-                    float srcA = a / count; // 平均 alpha（覆盖率）
-                    float cover = count / scaleSq; // 几何覆盖率，但我们已通过子像素计数得到，直接使用 srcA 作为像素 alpha
-
-                    // 与目标混合（与 fillSpan 一致的 source-over 混合）
+                    float srcA = a / count;
                     float dR = dst[didx], dG = dst[didx+1], dB = dst[didx+2], dA = dst[didx+3];
                     float invSrcA = 1.0f - srcA;
                     dst[didx]   = srcR * srcA + dR * dA * invSrcA;
@@ -435,7 +484,7 @@ public final class CurveRasterizer {
             }
         }
         double[] result = out.toArray();
-        out.dispose(); // 释放构建器内部数组
+        out.dispose();
         return result.length >= 6 ? result : null;
     }
 
