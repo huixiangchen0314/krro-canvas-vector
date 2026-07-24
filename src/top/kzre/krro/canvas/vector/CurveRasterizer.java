@@ -20,10 +20,16 @@ public class CurveRasterizer {
         this.outliner = new StrokeOutliner(config.getMiterLimit(), config.getRoundSteps());
         this.clipper = new TileClipper();
         // 根据配置选择抗锯齿策略
-        if (config.getAntiAlias() == AntiAlias.SSAA_2x2) {
-            this.aaStrategy = new SSAA2x2();
-        } else {
-            this.aaStrategy = new NoAntiAlias();
+        switch (config.getAntiAlias()) {
+            case SSAA_2x2:
+                this.aaStrategy = new SSAA2x2();
+                break;
+            case ANALYTIC:
+                this.aaStrategy = new AnalyticAA();
+                break;
+            default:
+                this.aaStrategy = new NoAntiAlias();
+                break;
         }
     }
 
@@ -45,7 +51,7 @@ public class CurveRasterizer {
         // 快速路径
         if (width <= 0) return;
         if (isStraightLine(curve)) {
-            strokeLineAsQuad(dst, w, h, curve, width, width, color, dirtyTiles, tileSize);
+            strokeLineAsQuad(dst, w, h, curve, width, width, color,cap, dirtyTiles, tileSize);
             return;
         }
 
@@ -60,7 +66,7 @@ public class CurveRasterizer {
         if (isStraightLine(curve)) {
             double w1 = widthFunc.applyAsDouble(0);
             double w2 = widthFunc.applyAsDouble(1);
-            strokeLineAsQuad(dst, w, h, curve, w1, w2, color, dirtyTiles, tileSize);
+            strokeLineAsQuad(dst, w, h, curve, w1, w2, color,cap, dirtyTiles, tileSize);
             return;
         }
 
@@ -97,27 +103,66 @@ public class CurveRasterizer {
         }
     }
 
+
+    /**
+     * 直线快速路径
+     */
     private void strokeLineAsQuad(float[] dst, int w, int h, Curve curve,
                                   double startWidth, double endWidth,
-                                  float[] color, Set<Long> dirtyTiles, int tileSize) {
+                                  float[] color, Cap cap,
+                                  Set<Long> dirtyTiles, int tileSize) {
         double[] ends = getLineEndpoints(curve);
         double x1 = ends[0], y1 = ends[1];
         double x2 = ends[2], y2 = ends[3];
+
         double hw1 = startWidth * 0.5;
         double hw2 = endWidth * 0.5;
+        if (hw1 <= 0 && hw2 <= 0) return;
 
         double dx = x2 - x1, dy = y2 - y1;
         double len = Math.hypot(dx, dy);
         if (len < 1e-6) return;
-        double px = -dy / len, py = dx / len;  // 垂直方向
+        double px = -dy / len, py = dx / len;  // 右侧法线
 
-        double[] poly = new double[8];
-        poly[0] = x1 + hw1 * px;  poly[1] = y1 + hw1 * py;
-        poly[2] = x2 + hw2 * px;  poly[3] = y2 + hw2 * py;
-        poly[4] = x2 - hw2 * px;  poly[5] = y2 - hw2 * py;
-        poly[6] = x1 - hw1 * px;  poly[7] = y1 - hw1 * py;
+        // 计算左右侧边缘点
+        double rightX1 = x1 + hw1 * px, rightY1 = y1 + hw1 * py;
+        double leftX1  = x1 - hw1 * px, leftY1  = y1 - hw1 * py;
+        double rightX2 = x2 + hw2 * px, rightY2 = y2 + hw2 * py;
+        double leftX2  = x2 - hw2 * px, leftY2  = y2 - hw2 * py;
 
+        DoubleList polyBuilder = new DoubleList(32);
+
+        // 起点 cap (isStart = true)
+        // 切线方向指向线段内部，即从 x1 到 x2 的方向
+        addCap(cap, x1, y1, dx/len, dy/len, hw1,
+                rightX1, rightY1, leftX1, leftY1, polyBuilder, true);
+
+        // 右侧边（从起点到终点）
+        polyBuilder.add(rightX1, rightY1);
+        // 如果需要 join，这里可以处理，但直线只有一个段，没有 join
+        polyBuilder.add(rightX2, rightY2);
+
+        // 终点 cap (isStart = false)
+        addCap(cap, x2, y2, -dx/len, -dy/len, hw2,
+                rightX2, rightY2, leftX2, leftY2, polyBuilder, false);
+
+        // 左侧边反向（从终点回到起点）
+        polyBuilder.add(leftX2, leftY2);
+        polyBuilder.add(leftX1, leftY1);
+
+        // 闭合多边形
+        polyBuilder.add(rightX1, rightY1); // 连接回起点 cap 的起点
+
+        double[] poly = polyBuilder.toArray();
         renderPolygon(dst, w, h, poly, color, FillRule.NON_ZERO, dirtyTiles, tileSize);
+    }
+
+    // 封装 CapGenerator 调用
+    private static void addCap(Cap cap, double cx, double cy, double tangentX, double tangentY,
+                               double halfWidth, double rightX, double rightY,
+                               double leftX, double leftY, DoubleList builder, boolean isStart) {
+        CapGenerator.addCap(cap, cx, cy, tangentX, tangentY, halfWidth,
+                rightX, rightY, leftX, leftY, builder, isStart);
     }
 
     private static double[] getLineEndpoints(Curve curve) {

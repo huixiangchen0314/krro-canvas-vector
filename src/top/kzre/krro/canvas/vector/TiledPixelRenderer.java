@@ -1,6 +1,9 @@
 package top.kzre.krro.canvas.vector;
 
 import top.kzre.colorutils.blend.Blends;
+import top.kzre.krro.util.pool.FloatsPool;
+import top.kzre.krro.util.pool.FloatsPools;
+import top.kzre.krro.util.tile.Canvas;
 import top.kzre.krro.util.tile.TiledCanvas;
 
 import java.util.HashSet;
@@ -14,98 +17,148 @@ import java.util.Set;
 public final class TiledPixelRenderer {
 
     private TiledPixelRenderer() {}
-
     /**
-     * 将源连续数组按仿射变换混合到目标数组。
+     * 将源浮点数组通过仿射变换混合到目标 Canvas 上（瓦片粒度）。
+     * 当矩阵为单位矩阵时自动走快速路径，不进行逆映射。
      *
-     * @param dst         目标 RGBA 数组 (dstW * dstH * 4)
-     * @param dstW        目标宽度
-     * @param dstH        目标高度
-     * @param src         源 RGBA 数组 (dstW * dstH * 4) — 尺寸必须与目标相同
-     * @param srcTileSize 虚拟瓦片尺寸，仅用于划分脏区域（与源数组尺寸无关）
-     * @param matrix2d      仿射变换矩阵 [a, b, c, d, tx, ty]（列向量约定）
-     * @param blendMode   混合模式（来自 Blends 常量）
-     * @param opacity     透明度 [0, 1]
-     * @param dirtyTiles  需要更新的目标瓦片键集（基于 srcTileSize 划分），
-     *                    若为 null 则更新所有目标瓦片；若为空集合则忽略。
+     * @param dest      目标画布
+     * @param w         画布宽度（像素）
+     * @param h         画布高度（像素）
+     * @param src       源像素数组 (w * h * 4)
+     * @param tileSize  瓦片尺寸（仅用于划分脏区域，通常取画布的 tileSize）
+     * @param matrix2d  2D 仿射矩阵 [a,b,c,d,平移x,平移y]
+     * @param blendMode 混合模式
+     * @param opacity   不透明度
+     * @param dirtyTiles 脏瓦片集合，null 表示全图，空集合直接返回
      */
-    public static void blendTransformedTiled(float[] dst, int dstW, int dstH,
-                                             float[] src, int srcTileSize,
+    public static void blendTransformedTiled(Canvas dest, int w, int h,
+                                             float[] src, int tileSize,
                                              float[] matrix2d, String blendMode, float opacity,
                                              Set<Long> dirtyTiles) {
-        if (dst == null || src == null)
-            throw new IllegalArgumentException("dst and src cannot be null");
-        if (dstW <= 0 || dstH <= 0)
-            throw new IllegalArgumentException("dimensions must be positive");
-        if (src.length < dstW * dstH * 4)
-            throw new IllegalArgumentException("src array too small");
-        if (opacity < 0 || opacity > 1)
-            throw new IllegalArgumentException("opacity out of range");
-        if (matrix2d == null || matrix2d.length < 6)
-            throw new IllegalArgumentException("matrix2d must be a 6-element float array");
-        if (srcTileSize <= 0) return;
-
-        // 空脏集合直接返回
+        if (dest == null || src == null) throw new IllegalArgumentException();
+        if (opacity < 0 || opacity > 1) return;
+        if (tileSize <= 0) return;
         if (dirtyTiles != null && dirtyTiles.isEmpty()) return;
 
-        // 计算逆矩阵（目标 → 源）
-        float[] invMatrix = invertMatrix(matrix2d);
-        if (invMatrix == null) return; // 奇异矩阵
+        int channels = dest.getChannels();   // 固定为 4
 
-        // 如果 dirtyTiles 为 null，生成所有目标瓦片
-        Set<Long> targetTiles = dirtyTiles;
-        if (targetTiles == null) {
-            int tilesX = (dstW + srcTileSize - 1) / srcTileSize;
-            int tilesY = (dstH + srcTileSize - 1) / srcTileSize;
-            targetTiles = new HashSet<>();
-            for (int ty = 0; ty < tilesY; ty++) {
-                for (int tx = 0; tx < tilesX; tx++) {
-                    targetTiles.add(TiledCanvas.pack(tx, ty));
+        // 判断是否为单位矩阵
+        float m00 = matrix2d[0], m01 = matrix2d[1], m10 = matrix2d[2], m11 = matrix2d[3],
+                mTx = matrix2d[4], mTy = matrix2d[5];
+        boolean identity = Math.abs(m00 - 1f) < 1e-5f && Math.abs(m01) < 1e-5f &&
+                Math.abs(m10) < 1e-5f && Math.abs(m11 - 1f) < 1e-5f &&
+                Math.abs(mTx) < 1e-5f && Math.abs(mTy) < 1e-5f;
+
+        // 收集目标瓦片
+        Set<Long> tiles = dirtyTiles;
+        if (tiles == null) {
+            tiles = new HashSet<>();
+            int tilesX = (w + tileSize - 1) / tileSize;
+            int tilesY = (h + tileSize - 1) / tileSize;
+            for (int tileY = 0; tileY < tilesY; tileY++) {
+                for (int tileX = 0; tileX < tilesX; tileX++) {
+                    tiles.add(TiledCanvas.pack(tileX, tileY));
                 }
             }
         }
 
-        float[] bg = new float[4];
-        float[] fg = new float[4];
+        // 池化瓦片缓冲区
+        int tileBufSize = tileSize * tileSize * channels;
+        FloatsPool tilePool = FloatsPools.getPool(tileBufSize);
 
-        // 遍历目标脏瓦片
-        for (long key : targetTiles) {
-            int tx = TiledCanvas.unpackTx(key);
-            int ty = TiledCanvas.unpackTy(key);
+        // 复用背景和前景像素数组
+        float[] bgPixel  = new float[channels];
+        float[] srcPixel = new float[channels];
 
-            int startX = Math.max(0, tx * srcTileSize);
-            int startY = Math.max(0, ty * srcTileSize);
-            int endX = Math.min(startX + srcTileSize, dstW);
-            int endY = Math.min(startY + srcTileSize, dstH);
-            if (startX >= endX || startY >= endY) continue;
+        if (identity) {
+            // 单位矩阵快速路径：直接逐像素混合，无需逆变换
+            float[] dstTile = tilePool.acquire();
+            try {
+                for (long key : tiles) {
+                    int tileX = TiledCanvas.unpackTx(key);
+                    int tileY = TiledCanvas.unpackTy(key);
+                    int x0 = tileX * tileSize, y0 = tileY * tileSize;
+                    int x1 = Math.min(x0 + tileSize, w);
+                    int y1 = Math.min(y0 + tileSize, h);
+                    int bw = x1 - x0, bh = y1 - y0;
+                    if (bw <= 0 || bh <= 0) continue;
 
-            for (int y = startY; y < endY; y++) {
-                for (int x = startX; x < endX; x++) {
-                    // 逆映射到源坐标
-                    float sx = invMatrix[0] * x + invMatrix[2] * y + invMatrix[4];
-                    float sy = invMatrix[1] * x + invMatrix[3] * y + invMatrix[5];
+                    dest.readBytes(dstTile, 0, x0, y0, bw, bh, bw);
 
-                    // 采样源像素（双线性插值）
-                    sampleFromArray(src, dstW, dstH, sx, sy, fg);
-                    if (fg[3] == 0f) continue;
+                    for (int y = 0; y < bh; y++) {
+                        int srcY = y0 + y;
+                        for (int x = 0; x < bw; x++) {
+                            int srcX = x0 + x;
+                            int srcIdx = (srcY * w + srcX) * channels;
+                            int dstIdx = (y * bw + x) * channels;
 
-                    fg[3] *= opacity;
+                            bgPixel[0] = dstTile[dstIdx]; bgPixel[1] = dstTile[dstIdx+1];
+                            bgPixel[2] = dstTile[dstIdx+2]; bgPixel[3] = dstTile[dstIdx+3];
 
-                    int idx = (y * dstW + x) * 4;
-                    bg[0] = dst[idx];
-                    bg[1] = dst[idx + 1];
-                    bg[2] = dst[idx + 2];
-                    bg[3] = dst[idx + 3];
+                            srcPixel[0] = src[srcIdx]; srcPixel[1] = src[srcIdx+1];
+                            srcPixel[2] = src[srcIdx+2]; srcPixel[3] = src[srcIdx+3] * opacity;
+                            if (srcPixel[3] == 0f) continue;
 
-                    float[] blended = Blends.blendWithAlpha(blendMode, bg, fg);
-                    dst[idx]     = blended[0];
-                    dst[idx + 1] = blended[1];
-                    dst[idx + 2] = blended[2];
-                    dst[idx + 3] = blended[3];
+                            float[] blended = Blends.blendWithAlpha(blendMode, bgPixel, srcPixel);
+                            dstTile[dstIdx]   = blended[0];
+                            dstTile[dstIdx+1] = blended[1];
+                            dstTile[dstIdx+2] = blended[2];
+                            dstTile[dstIdx+3] = blended[3];
+                        }
+                    }
+                    dest.writeBytes(dstTile, 0, x0, y0, bw, bh, bw);
                 }
+            } finally {
+                tilePool.release(dstTile);
+            }
+        } else {
+            // 一般变换路径：需要逆矩阵和双线性采样
+            float[] inv = invertMatrix(matrix2d);
+            if (inv == null) return;
+
+            float[] dstTile = tilePool.acquire();
+            try {
+                for (long key : tiles) {
+                    int tileX = TiledCanvas.unpackTx(key);
+                    int tileY = TiledCanvas.unpackTy(key);
+                    int x0 = tileX * tileSize, y0 = tileY * tileSize;
+                    int x1 = Math.min(x0 + tileSize, w);
+                    int y1 = Math.min(y0 + tileSize, h);
+                    int bw = x1 - x0, bh = y1 - y0;
+                    if (bw <= 0 || bh <= 0) continue;
+
+                    dest.readBytes(dstTile, 0, x0, y0, bw, bh, bw);
+
+                    for (int y = 0; y < bh; y++) {
+                        int worldY = y0 + y;
+                        for (int x = 0; x < bw; x++) {
+                            int worldX = x0 + x;
+                            float sx = inv[0] * worldX + inv[2] * worldY + inv[4];
+                            float sy = inv[1] * worldX + inv[3] * worldY + inv[5];
+                            sampleFromArray(src, w, h, sx, sy, srcPixel);
+                            if (srcPixel[3] == 0f) continue;
+                            srcPixel[3] *= opacity;
+
+                            int dstIdx = (y * bw + x) * channels;
+                            bgPixel[0] = dstTile[dstIdx]; bgPixel[1] = dstTile[dstIdx+1];
+                            bgPixel[2] = dstTile[dstIdx+2]; bgPixel[3] = dstTile[dstIdx+3];
+
+                            float[] blended = Blends.blendWithAlpha(blendMode, bgPixel, srcPixel);
+                            dstTile[dstIdx]   = blended[0];
+                            dstTile[dstIdx+1] = blended[1];
+                            dstTile[dstIdx+2] = blended[2];
+                            dstTile[dstIdx+3] = blended[3];
+                        }
+                    }
+                    dest.writeBytes(dstTile, 0, x0, y0, bw, bh, bw);
+                }
+            } finally {
+                tilePool.release(dstTile);
             }
         }
     }
+
+
 
     // ---------- 辅助方法 ----------
 

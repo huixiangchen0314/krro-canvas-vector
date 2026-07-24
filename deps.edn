@@ -5,6 +5,10 @@
         top.kzre/krro-util-tile {:mvn/version "1.0-SNAPSHOT"}
         top.kzre/krro-curve-bezier2d {:mvn/version "0.1.0"}
         top.kzre/krro-curve-catmullrom2d {:mvn/version "0.1.0"}
+
+
+        com.taoensso/timbre {:mvn/version "6.3.1"}
+        com.taoensso/tufte {:mvn/version "2.6.3"}
         }
 
  :aliases {:test {:extra-paths ["test"]
