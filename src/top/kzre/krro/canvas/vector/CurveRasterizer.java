@@ -1,7 +1,11 @@
 package top.kzre.krro.canvas.vector;
 
 import top.kzre.curve.bezier2d.Curve;
+import top.kzre.curve.bezier2d.Segment;
+import top.kzre.curve.bezier2d.Segments;
 import top.kzre.krro.util.tile.TiledCanvas;
+
+import java.util.List;
 import java.util.Set;
 import java.util.function.DoubleUnaryOperator;
 
@@ -37,6 +41,14 @@ public class CurveRasterizer {
                             float width, float[] color,
                             Cap cap, Join join,
                             Set<Long> dirtyTiles, int tileSize) {
+
+        // 快速路径
+        if (width <= 0) return;
+        if (isStraightLine(curve)) {
+            strokeLineAsQuad(dst, w, h, curve, width, width, color, dirtyTiles, tileSize);
+            return;
+        }
+
         strokeVariable(dst, w, h, curve, t -> width, color, cap, join, dirtyTiles, tileSize);
     }
 
@@ -45,6 +57,14 @@ public class CurveRasterizer {
                                DoubleUnaryOperator widthFunc,
                                float[] color, Cap cap, Join join,
                                Set<Long> dirtyTiles, int tileSize) {
+        if (isStraightLine(curve)) {
+            double w1 = widthFunc.applyAsDouble(0);
+            double w2 = widthFunc.applyAsDouble(1);
+            strokeLineAsQuad(dst, w, h, curve, w1, w2, color, dirtyTiles, tileSize);
+            return;
+        }
+
+
         double[] flat = flattener.flatten(curve);
         if (flat.length < 4) return;
         double[] outline = outliner.outline(flat, widthFunc, cap, join);
@@ -75,5 +95,62 @@ public class CurveRasterizer {
                 }
             }
         }
+    }
+
+    private void strokeLineAsQuad(float[] dst, int w, int h, Curve curve,
+                                  double startWidth, double endWidth,
+                                  float[] color, Set<Long> dirtyTiles, int tileSize) {
+        double[] ends = getLineEndpoints(curve);
+        double x1 = ends[0], y1 = ends[1];
+        double x2 = ends[2], y2 = ends[3];
+        double hw1 = startWidth * 0.5;
+        double hw2 = endWidth * 0.5;
+
+        double dx = x2 - x1, dy = y2 - y1;
+        double len = Math.hypot(dx, dy);
+        if (len < 1e-6) return;
+        double px = -dy / len, py = dx / len;  // 垂直方向
+
+        double[] poly = new double[8];
+        poly[0] = x1 + hw1 * px;  poly[1] = y1 + hw1 * py;
+        poly[2] = x2 + hw2 * px;  poly[3] = y2 + hw2 * py;
+        poly[4] = x2 - hw2 * px;  poly[5] = y2 - hw2 * py;
+        poly[6] = x1 - hw1 * px;  poly[7] = y1 - hw1 * py;
+
+        renderPolygon(dst, w, h, poly, color, FillRule.NON_ZERO, dirtyTiles, tileSize);
+    }
+
+    private static double[] getLineEndpoints(Curve curve) {
+        Segment seg = curve.getSegments().get(0);
+        return new double[]{ seg.getA().getX(), seg.getA().getY(),
+                seg.getD().getX(), seg.getD().getY() };
+    }
+
+    private static boolean isStraightLine(Curve curve) {
+        List<Segment> segs = curve.getSegments();
+        if (segs.size() != 1) return false;
+        Segment seg = segs.get(0);
+        // 获取四个控制点
+        double x0 = seg.getA().getX(), y0 = seg.getA().getY();
+        double x1 = seg.getB().getX(), y1 = seg.getB().getY();
+        double x2 = seg.getC().getX(), y2 = seg.getC().getY();
+        double x3 = seg.getD().getX(), y3 = seg.getD().getY();
+
+        // 检查 P1 和 P2 是否都在线段 P0-P3 上
+        return isPointOnLineSegment(x1, y1, x0, y0, x3, y3) &&
+                isPointOnLineSegment(x2, y2, x0, y0, x3, y3);
+    }
+
+    private static boolean isPointOnLineSegment(double px, double py,
+                                                double ax, double ay,
+                                                double bx, double by) {
+        // 叉积判断共线性
+        double cross = (py - ay) * (bx - ax) - (px - ax) * (by - ay);
+        if (Math.abs(cross) > 0.001) return false; // 不共线
+        // 点积判断是否在线段范围内
+        double dot = (px - ax) * (bx - ax) + (py - ay) * (by - ay);
+        if (dot < 0) return false;
+        double len2 = (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
+        return !(dot > len2);
     }
 }

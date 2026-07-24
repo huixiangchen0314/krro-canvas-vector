@@ -49,7 +49,7 @@
 ;; ═══════════════════════════════════════════════
 ;; 创建光栅化器（根据图层配置）
 ;; ═══════════════════════════════════════════════
-(defn- build-rasterizer [layer]
+(defn build-rasterizer [layer]
   (let [config (RasterizerConfig.)]
     ;; 设置抗锯齿
     (if (:antialiased layer)
@@ -61,20 +61,20 @@
 ;; ═══════════════════════════════════════════════
 ;; 绘制辅助函数（接受光栅化器实例）
 ;; ═══════════════════════════════════════════════
-(defn- draw-fill!
+(defn draw-fill!
   [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve fill-style
    ^Set dirty-tiles tile-size]
-  (let [color     (:color fill-style)
+  (let [color (float-array (:color fill-style))
         fill-rule (case (:fill-rule fill-style)
                     :even-odd FillRule/EVEN_ODD
                     :non-zero FillRule/NON_ZERO
                     FillRule/EVEN_ODD)]
     (.fill rasterizer cache w h curve color fill-rule dirty-tiles (int tile-size))))
 
-(defn- draw-stroke!
+(defn draw-stroke!
   [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve stroke-style
    width-samples arc-params ^Set dirty-tiles tile-size]
-  (let [color     (:color stroke-style)
+  (let [color (float-array (:color stroke-style))
         cap       (case (:cap stroke-style)
                     :butt Cap/BUTT :round Cap/ROUND :square Cap/SQUARE Cap/BUTT)
         join      (case (:join stroke-style)
