@@ -18,12 +18,12 @@
 ;; 图层构造函数（不变）
 ;; ═══════════════════════════════════════════════
 (defn make-vector-layer
-  [& {:keys [id name opacity blend-mode visible? backend]
+  [& {:keys [id name opacity blend-mode visible backend]
       :or   {id         (keyword (str "layer-" (UUID/randomUUID)))
              name       "Vector Layer"
              opacity    1.0
              blend-mode :normal
-             visible?   true
+             visible   true
              backend    :default}
       :as   opts}]
   (merge
@@ -32,7 +32,7 @@
      :name         name
      :opacity      opacity
      :blend-mode   blend-mode
-     :visible?     visible?
+     :visible     visible
      :backend      backend
      :paths-map    {}
      :path-order   []

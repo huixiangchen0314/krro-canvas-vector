@@ -7,7 +7,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 
-public class Flattener {
+public final class Flattener {
     private final double flatnessSq;
 
     public Flattener(double flatness) {

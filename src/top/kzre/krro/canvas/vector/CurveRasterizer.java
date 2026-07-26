@@ -1,8 +1,8 @@
 package top.kzre.krro.canvas.vector;
 
+import top.kzre.curve.bezier2d.ControlPoint;
 import top.kzre.curve.bezier2d.Curve;
 import top.kzre.curve.bezier2d.Segment;
-import top.kzre.curve.bezier2d.Segments;
 import top.kzre.krro.util.tile.TiledCanvas;
 
 import java.util.List;
@@ -134,7 +134,7 @@ public class CurveRasterizer {
 
         // 起点 cap (isStart = true)
         // 切线方向指向线段内部，即从 x1 到 x2 的方向
-        addCap(cap, x1, y1, dx/len, dy/len, hw1,
+        outliner.addCap(cap, x1, y1, dx/len, dy/len, hw1,
                 rightX1, rightY1, leftX1, leftY1, polyBuilder, true);
 
         // 右侧边（从起点到终点）
@@ -143,7 +143,7 @@ public class CurveRasterizer {
         polyBuilder.add(rightX2, rightY2);
 
         // 终点 cap (isStart = false)
-        addCap(cap, x2, y2, -dx/len, -dy/len, hw2,
+        outliner.addCap(cap, x2, y2, -dx/len, -dy/len, hw2,
                 rightX2, rightY2, leftX2, leftY2, polyBuilder, false);
 
         // 左侧边反向（从终点回到起点）
@@ -157,45 +157,29 @@ public class CurveRasterizer {
         renderPolygon(dst, w, h, poly, color, FillRule.NON_ZERO, dirtyTiles, tileSize);
     }
 
-    // 封装 CapGenerator 调用
-    private static void addCap(Cap cap, double cx, double cy, double tangentX, double tangentY,
-                               double halfWidth, double rightX, double rightY,
-                               double leftX, double leftY, DoubleList builder, boolean isStart) {
-        CapGenerator.addCap(cap, cx, cy, tangentX, tangentY, halfWidth,
-                rightX, rightY, leftX, leftY, builder, isStart);
-    }
-
     private static double[] getLineEndpoints(Curve curve) {
-        Segment seg = curve.getSegments().get(0);
-        return new double[]{ seg.getA().getX(), seg.getA().getY(),
-                seg.getD().getX(), seg.getD().getY() };
+        List<ControlPoint> points = curve.getPoints();
+        if (points.size() != 2) {
+            throw new IllegalArgumentException("Curve must have exactly 2 control points for a straight line");
+        }
+        ControlPoint p0 = points.get(0);
+        ControlPoint p1 = points.get(1);
+        return new double[]{ p0.getX(), p0.getY(), p1.getX(), p1.getY() };
     }
 
     private static boolean isStraightLine(Curve curve) {
-        List<Segment> segs = curve.getSegments();
-        if (segs.size() != 1) return false;
-        Segment seg = segs.get(0);
-        // 获取四个控制点
-        double x0 = seg.getA().getX(), y0 = seg.getA().getY();
-        double x1 = seg.getB().getX(), y1 = seg.getB().getY();
-        double x2 = seg.getC().getX(), y2 = seg.getC().getY();
-        double x3 = seg.getD().getX(), y3 = seg.getD().getY();
+        List<ControlPoint> points = curve.getPoints();
+        // 直线只有两个控制点（起点和终点），且曲线不闭合
+        if (points.size() != 2 || curve.isClosed()) return false;
 
-        // 检查 P1 和 P2 是否都在线段 P0-P3 上
-        return isPointOnLineSegment(x1, y1, x0, y0, x3, y3) &&
-                isPointOnLineSegment(x2, y2, x0, y0, x3, y3);
+        ControlPoint p0 = points.get(0);
+        ControlPoint p1 = points.get(1);
+
+        // 检查内部控制点是否与端点重合（手柄为0）
+        boolean p0Straight = Math.abs(p0.getDx2()) < 1e-6 && Math.abs(p0.getDy2()) < 1e-6;   // 起点出射手柄
+        boolean p1Straight = Math.abs(p1.getDx1()) < 1e-6 && Math.abs(p1.getDy1()) < 1e-6;   // 终点入射手柄
+
+        return p0Straight && p1Straight;
     }
 
-    private static boolean isPointOnLineSegment(double px, double py,
-                                                double ax, double ay,
-                                                double bx, double by) {
-        // 叉积判断共线性
-        double cross = (py - ay) * (bx - ax) - (px - ax) * (by - ay);
-        if (Math.abs(cross) > 0.001) return false; // 不共线
-        // 点积判断是否在线段范围内
-        double dot = (px - ax) * (bx - ax) + (py - ay) * (by - ay);
-        if (dot < 0) return false;
-        double len2 = (bx - ax) * (bx - ax) + (by - ay) * (by - ay);
-        return !(dot > len2);
-    }
 }
