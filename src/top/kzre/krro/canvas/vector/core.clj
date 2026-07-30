@@ -1,5 +1,5 @@
 (ns top.kzre.krro.canvas.vector.core
-  "矢量图层门面：内部使用 float[] 高效光栅化，最终混合到 Canvas。"
+  "矢量图层门面：内部使用 Canvas 高效光栅化，最终混合到 Canvas。"
   (:require
     [top.kzre.krro.canvas.core.core :as c]
     [top.kzre.krro.canvas.core.layer.util :as lu]
@@ -11,7 +11,8 @@
     (java.util Collection HashSet Set UUID)
     (top.kzre.curve.bezier2d Bezier2D Curve)
     (top.kzre.krro.canvas.vector
-      AntiAlias ArcLengthSampleWidthFunc Cap CurveRasterizer FillRule Join RasterizerConfig TiledPixelRenderer)
+      AntiAlias ArcLengthSampleWidthFunc Cap CanvasCurveRasterizer FillRule Join RasterizerConfig)
+    (top.kzre.krro.canvas.core.layer PixelBlitter)
     (top.kzre.krro.util.tile Canvas TiledCanvas)))
 
 ;; ═══════════════════════════════════════════════
@@ -40,18 +41,18 @@
     (select-keys opts [:x :y :scale-x :scale-y :rotation])))
 
 ;; ═══════════════════════════════════════════════
-;; 创建光栅化器（根据图层配置）
+;; 创建光栅化器（使用新的 CanvasCurveRasterizer）
 ;; ═══════════════════════════════════════════════
 (defn build-rasterizer [layer]
   (let [config (RasterizerConfig.)]
     (if (:antialiased layer)
       (.setAntiAlias config AntiAlias/ANALYTIC)
       (.setAntiAlias config AntiAlias/DISABLED))
-    (CurveRasterizer. config)))
+    (CanvasCurveRasterizer. config)))
 
-;; ---------- 绘制辅助函数（操作 float[]）----------
+;; ---------- 绘制辅助函数（直接写入 Canvas）----------
 (defn draw-fill!
-  [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve fill-style
+  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h ^Curve curve fill-style
    ^Set dirty-tiles tile-size]
   (p/p :vector/draw-fill
        (let [color     (float-array (:color fill-style))
@@ -59,10 +60,10 @@
                          :even-odd FillRule/EVEN_ODD
                          :non-zero FillRule/NON_ZERO
                          FillRule/EVEN_ODD)]
-         (.fill rasterizer cache w h curve color fill-rule dirty-tiles (int tile-size)))))
+         (.fill rasterizer canvas w h curve color fill-rule dirty-tiles (int tile-size)))))
 
 (defn draw-stroke!
-  [^CurveRasterizer rasterizer ^floats cache w h ^Curve curve stroke-style
+  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h ^Curve curve stroke-style
    width-samples arc-params ^Set dirty-tiles tile-size]
   (p/p :vector/draw-stroke
        (let [color (float-array (:color stroke-style))
@@ -78,16 +79,16 @@
          (cond
            has-var-width
            (let [width-fn (ArcLengthSampleWidthFunc. (double-array arc-params) (double-array width-samples))]
-             (.strokeVariable rasterizer cache w h curve width-fn color cap join
+             (.strokeVariable rasterizer canvas w h curve width-fn color cap join
                               dirty-tiles (int tile-size)))
            (number? width)
-           (.strokeFixed rasterizer cache w h curve (float width) color cap join
+           (.strokeFixed rasterizer canvas w h curve (float width) color cap join
                          dirty-tiles (int tile-size))
            :else nil))))
 
 ;; ---------- 单路径渲染（应用图层变换）----------
 (defn- render-path-transformed!
-  [^CurveRasterizer rasterizer ^floats cache w h path layer
+  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h path layer
    ^Set dirty-tiles tile-size]
   (when-let [style (:style path)]
     (p/p :vector/render-path
@@ -107,36 +108,33 @@
            (when curve
              (let [transformed (Bezier2D/transform curve a b c d tx ty)]
                (when-let [fill (:fill style)]
-                 (draw-fill! rasterizer cache w h transformed fill dirty-tiles tile-size))
+                 (draw-fill! rasterizer canvas w h transformed fill dirty-tiles tile-size))
                (when-let [stroke (:stroke style)]
-                 (draw-stroke! rasterizer cache w h transformed stroke
+                 (draw-stroke! rasterizer canvas w h transformed stroke
                                (:width-samples path) (:arc-params path)
                                dirty-tiles tile-size))))))))
 
-;; ---------- 主光栅化逻辑（生成 float[]）----------
+;; ---------- 主光栅化逻辑（返回 Canvas）----------
 (defn- rasterize-paths!
-  [layer w h ^CurveRasterizer rasterizer ^Set dirty-tiles tile-size]
+  [layer w h ^CanvasCurveRasterizer rasterizer ^Set dirty-tiles tile-size]
   (p/p :vector/rasterize-paths
-       (let [^floats pixels (float-array (* w h 4) 0.0)]
+       (let [canvas (TiledCanvas. (int tile-size))]   ;; 中间画布，瓦片尺寸与目标一致
          (doseq [id (:path-order layer)]
            (when-let [path (get (:paths-map layer) id)]
-             (render-path-transformed! rasterizer pixels w h path layer dirty-tiles tile-size)))
-         pixels)))
+             (render-path-transformed! rasterizer canvas w h path layer dirty-tiles tile-size)))
+         canvas)))   ;; 返回画布供后续混合
 
 ;; ---------- 图层渲染入口 ----------
 (defmethod c/render-layer! :vector
-  [layer ^Canvas dest-canvas w h {:keys [dirty-tiles tile-size] :or {tile-size 64}}]
+  [layer ^Canvas dest-canvas w h {:keys [dirty-tiles]}]
   (p/profile {:id :vector/render}
-             (let [rasterizer (build-rasterizer layer)
-                   ;; 内部高效光栅化到 float[]
-                   pixels      (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
-                   ;; 混合参数
+             (let [tile-size  (.getTileSize dest-canvas)   ;; 使用目标画布的瓦片大小
+                   rasterizer (build-rasterizer layer)
+                   src-canvas (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
                    blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
-                   opacity    (float (get layer :opacity 1.0))
-                   ;; 图层的 2D 变换已在光栅化时应用，混合使用单位矩阵
-                   transform  lu/identity-matrix
-                   matrix2d   (float-array transform)
-                   java-dirty (when (seq dirty-tiles) (HashSet. ^Collection dirty-tiles))]
-               ;; 将像素数组混合到目标 Canvas（支持脏区裁剪）
-               (TiledPixelRenderer/blendTransformedTiled dest-canvas w h pixels tile-size matrix2d blend-mode opacity java-dirty)
+                   opacity    (float (get layer :opacity 1.0))]
+               ;; 混合到目标画布（使用单位矩阵，关闭亚像素）
+               (PixelBlitter/blit dest-canvas w h src-canvas
+                                  lu/identity-matrix blend-mode opacity
+                                  (top.kzre.krro.util.tile.AntiAlias/noAntiAlias) dirty-tiles false)
                layer)))

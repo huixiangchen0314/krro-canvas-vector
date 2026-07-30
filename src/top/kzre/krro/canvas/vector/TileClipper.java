@@ -13,7 +13,7 @@ public class TileClipper {
      * 开放曲线逐段裁剪，丢弃完全在画布外的段，余下连续的可见段合并为若干子曲线。
      * 注意：返回的曲线直接引用了原始曲线的控制点，不要再修改它们。
      */
-    public void clip(List<Curve> out, Curve curve, int width, int height) {
+    public static void clip(List<Curve> out, Curve curve, int width, int height) {
         if (curve == null || curve.getPoints().isEmpty()) return;
 
         // 闭合曲线直接添加，无需裁剪
@@ -69,7 +69,7 @@ public class TileClipper {
     }
 
     /** 将多边形裁剪到矩形区域，返回新多边形顶点，若完全在外则返回 null */
-    public double[] clip(double[] poly, int rx, int ry, int rw, int rh) {
+    public static double[] clip(double[] poly, int rx, int ry, int rw, int rh) {
         if (poly == null || poly.length < 6) return null;
         double xmin = rx;
         double xmax = rx + rw;
@@ -87,7 +87,7 @@ public class TileClipper {
         return current;
     }
 
-    private double[] clipEdge(double[] poly, double limit, boolean keepGreater, boolean isX) {
+    private static double[] clipEdge(double[] poly, double limit, boolean keepGreater, boolean isX) {
         if (poly.length < 6) return null;
         DoubleList out = new DoubleList(poly.length / 2 + 4);
         int n = poly.length / 2;
