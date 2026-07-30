@@ -61,7 +61,7 @@ public final class TiledPixelRenderer {
                 }
             }
         }
-
+        int srcLen = src.length;
         // 池化瓦片缓冲区
         int tileBufSize = tileSize * tileSize * channels;
         FloatsPool tilePool = FloatsPools.getPool(tileBufSize);
@@ -91,6 +91,12 @@ public final class TiledPixelRenderer {
                             int srcX = x0 + x;
                             int srcIdx = (srcY * w + srcX) * channels;
                             int dstIdx = (y * bw + x) * channels;
+
+                            // 越界检查
+                            if (srcIdx < 0 || srcIdx + channels > srcLen) {
+                                continue;
+                            }
+
 
                             bgPixel[0] = dstTile[dstIdx]; bgPixel[1] = dstTile[dstIdx+1];
                             bgPixel[2] = dstTile[dstIdx+2]; bgPixel[3] = dstTile[dstIdx+3];

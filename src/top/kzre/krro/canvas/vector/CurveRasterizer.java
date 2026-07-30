@@ -5,6 +5,7 @@ import top.kzre.curve.bezier2d.Curve;
 import top.kzre.curve.bezier2d.Segment;
 import top.kzre.krro.util.tile.TiledCanvas;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.DoubleUnaryOperator;
@@ -47,15 +48,20 @@ public class CurveRasterizer {
                             float width, float[] color,
                             Cap cap, Join join,
                             Set<Long> dirtyTiles, int tileSize) {
-
-        // 快速路径
         if (width <= 0) return;
-        if (isStraightLine(curve)) {
-            strokeLineAsQuad(dst, w, h, curve, width, width, color,cap, dirtyTiles, tileSize);
-            return;
-        }
 
-        strokeVariable(dst, w, h, curve, t -> width, color, cap, join, dirtyTiles, tileSize);
+        // 裁剪曲线
+        List<Curve> clipped = new ArrayList<>();
+        clipper.clip(clipped, curve, w, h);
+        for (Curve subCurve : clipped) {
+            if (isStraightLine(subCurve)) {
+                // 直线快速路径
+                strokeLineAsQuad(dst, w, h, subCurve, width, width, color, cap, dirtyTiles, tileSize);
+            } else {
+                // 一般曲线使用可变宽度描边，宽度固定
+                strokeVariableSub(dst, w, h, subCurve, t -> width, color, cap, join, dirtyTiles, tileSize);
+            }
+        }
     }
 
     // ---------- 可变宽度描边 ----------
@@ -63,19 +69,28 @@ public class CurveRasterizer {
                                DoubleUnaryOperator widthFunc,
                                float[] color, Cap cap, Join join,
                                Set<Long> dirtyTiles, int tileSize) {
-        if (isStraightLine(curve)) {
-            double w1 = widthFunc.applyAsDouble(0);
-            double w2 = widthFunc.applyAsDouble(1);
-            strokeLineAsQuad(dst, w, h, curve, w1, w2, color,cap, dirtyTiles, tileSize);
-            return;
+        List<Curve> clipped = new ArrayList<>();
+        clipper.clip(clipped, curve, w, h);
+        for (Curve subCurve : clipped) {
+            if (isStraightLine(subCurve)) {
+                double w1 = widthFunc.applyAsDouble(0);
+                double w2 = widthFunc.applyAsDouble(1);
+                strokeLineAsQuad(dst, w, h, subCurve, w1, w2, color, cap, dirtyTiles, tileSize);
+            } else {
+                strokeVariableSub(dst, w, h, subCurve, widthFunc, color, cap, join, dirtyTiles, tileSize);
+            }
         }
+    }
 
-
+    // 内部：可变宽度描边（已包含展平与描边轮廓生成）
+    private void strokeVariableSub(float[] dst, int w, int h, Curve curve,
+                                   DoubleUnaryOperator widthFunc,
+                                   float[] color, Cap cap, Join join,
+                                   Set<Long> dirtyTiles, int tileSize) {
         double[] flat = flattener.flatten(curve);
         if (flat.length < 4) return;
         double[] outline = outliner.outline(flat, widthFunc, cap, join);
         if (outline.length < 6) return;
-        // 描边始终使用 NON_ZERO 规则
         renderPolygon(dst, w, h, outline, color, FillRule.NON_ZERO, dirtyTiles, tileSize);
     }
 
