@@ -37,6 +37,23 @@ public class CanvasCurveRasterizer {
         renderPolygon(dest, w, h, flat, color, rule, dirtyTiles, tileSize);
     }
 
+
+    /**
+     * 简单批量描边（固定宽度）。逐条调用 strokeFixed，不做任何合并或加速。
+     */
+    public void strokeCurvesFixed(Canvas dest, int w, int h, List<StrokeDesc> strokes,
+                                  Set<Long> dirtyTiles, int tileSize) {
+        for (StrokeDesc sd : strokes) {
+            if (sd.isVariableWidth) {
+                strokeVariable(dest, w, h, sd.curve, sd.widthFunc,
+                        sd.color, sd.cap, sd.join, dirtyTiles, tileSize);
+            } else {
+                strokeFixed(dest, w, h, sd.curve, sd.fixedWidth,
+                        sd.color, sd.cap, sd.join, dirtyTiles, tileSize);
+            }
+        }
+    }
+
     /** 固定宽度描边 */
     public void strokeFixed(Canvas dest, int w, int h, Curve curve,
                             float width, float[] color,
@@ -131,7 +148,59 @@ public class CanvasCurveRasterizer {
         renderPolygon(dest, w, h, polygon, color, FillRule.NON_ZERO, dirtyTiles, tileSize);
     }
 
-    // ---- 辅助方法 ----
+    // ---- 加速结构辅助方法 ----
+
+    /** 生成固定宽度描边的多边形列表（用于加速结构） */
+    private List<double[]> generateFixedStrokePolygons(StrokeDesc sd) {
+        List<double[]> result = new ArrayList<>();
+        if (isStraightLine(sd.curve) && sd.cap == Cap.BUTT) {
+            // 直线且无端点装饰：直接生成矩形四边形（利于合并）
+            double[] quad = generateLineQuad(sd.curve, sd.fixedWidth);
+            if (quad != null) result.add(quad);
+        } else {
+            // 曲线或带 cap 的直线：使用标准轮廓生成
+            double[] outline = generateOutline(sd.curve, t -> (double) sd.fixedWidth, sd.cap, sd.join);
+            if (outline != null) result.add(outline);
+        }
+        return result;
+    }
+
+    /** 生成可变宽度描边的多边形列表（用于加速结构） */
+    private List<double[]> generateVariableStrokePolygons(StrokeDesc sd) {
+        List<double[]> result = new ArrayList<>();
+        double[] outline = generateOutline(sd.curve, sd.widthFunc, sd.cap, sd.join);
+        if (outline != null) result.add(outline);
+        return result;
+    }
+
+    /** 通用轮廓生成（展平 + StrokeOutliner） */
+    private double[] generateOutline(Curve curve, DoubleUnaryOperator widthFunc, Cap cap, Join join) {
+        double[] flat = flattener.flatten(curve);
+        if (flat.length < 4) return null;
+        double[] outline = outliner.outline(flat, widthFunc, cap, join);
+        return (outline.length >= 6) ? outline : null;
+    }
+
+    /** 生成直线段的矩形四边形（忽略 cap） */
+    private double[] generateLineQuad(Curve curve, double width) {
+        double[] ends = getLineEndpoints(curve);
+        double x1 = ends[0], y1 = ends[1], x2 = ends[2], y2 = ends[3];
+        double dx = x2 - x1, dy = y2 - y1;
+        double len = Math.hypot(dx, dy);
+        if (len < 1e-6) return null;
+        double hw = width * 0.5;
+        double px = -dy / len * hw;
+        double py = dx / len * hw;
+
+        return new double[] {
+                x1 + px, y1 + py,
+                x2 + px, y2 + py,
+                x2 - px, y2 - py,
+                x1 - px, y1 - py
+        };
+    }
+
+    // ---- 通用辅助方法 ----
 
     private static double[] getLineEndpoints(Curve curve) {
         List<ControlPoint> points = curve.getPoints();

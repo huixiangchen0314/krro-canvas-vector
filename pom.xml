@@ -39,6 +39,8 @@
             <artifactId>krro-curve-catmullrom2d</artifactId>
             <version>0.1.0</version>
         </dependency>
-
     </dependencies>
+
+
+
 </project>

@@ -1,9 +1,6 @@
 package top.kzre.krro.canvas.vector;
 
-import top.kzre.krro.util.tile.Canvas;
 import top.kzre.krro.util.tile.TiledCanvas;
-
-import java.util.Set;
 
 public class CanvasAAFactory {
     public static AntiAliasPolicy create(AntiAlias mode) {
