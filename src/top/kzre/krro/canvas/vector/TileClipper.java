@@ -30,7 +30,7 @@ public class TileClipper {
             ControlPoint cpEnd   = curve.getPoints().get((i + 1) % curve.getPoints().size());
 
             boolean visible;
-            if (isDegenerateSegment(cpStart, cpEnd)) {
+            if (Segments.isStraightLine(cpStart, cpEnd)) {
                 // 快速路径：退化（直线）段，仅用端点判断包围盒
                 double minX = Math.min(cpStart.getX(), cpEnd.getX());
                 double maxX = Math.max(cpStart.getX(), cpEnd.getX());
@@ -62,14 +62,10 @@ public class TileClipper {
         }
     }
 
-    /** 判断一个段是否为退化段：起点无出控制柄且终点无入控制柄 */
-    private static boolean isDegenerateSegment(ControlPoint start, ControlPoint end) {
-        return Math.abs(start.getDx2()) < 1e-6 && Math.abs(start.getDy2()) < 1e-6 &&
-                Math.abs(end.getDx1()) < 1e-6 && Math.abs(end.getDy1()) < 1e-6;
-    }
-
     /** 将多边形裁剪到矩形区域，返回新多边形顶点，若完全在外则返回 null */
-    public static double[] clip(double[] poly, int rx, int ry, int rw, int rh) {
+    public static double[] clip(double[] poly,
+                                int rx, int ry,
+                                int rw, int rh) {
         if (poly == null || poly.length < 6) return null;
         double xmin = rx;
         double xmax = rx + rw;

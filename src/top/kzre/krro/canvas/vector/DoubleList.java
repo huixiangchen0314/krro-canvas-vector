@@ -1,12 +1,18 @@
 package top.kzre.krro.canvas.vector;
 
-public class DoubleList {
+public final class DoubleList {
     private double[] data;
     private int size;
 
     public DoubleList(int initialCapacity) {
         data = new double[Math.max(initialCapacity, 16)];
         size = 0;
+    }
+
+    //零拷贝
+    public DoubleList(double[] data) {
+        this.data = data;
+        size = data.length;
     }
 
     public void add(double value) {
@@ -30,6 +36,7 @@ public class DoubleList {
         System.arraycopy(data, 0, result, 0, size);
         return result;
     }
+
 
     public int size() { return size; }
     public double get(int index) { return data[index]; }

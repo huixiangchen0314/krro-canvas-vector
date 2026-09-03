@@ -90,29 +90,27 @@
 (defn- render-path-transformed!
   [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h path layer
    ^Set dirty-tiles tile-size]
-  (when-let [style (:style path)]
-    (p/p :vector/render-path
-         (let [transform (get layer :transform lu/identity-matrix)
-               a (nth transform 0) b (nth transform 1)
-               c (nth transform 2) d (nth transform 3)
-               tx (nth transform 4) ty (nth transform 5)
-               curve (case (:path-type path)
-                       :bezier
-                       (let [c (Curve.)]
-                         (bezier/edn->curve! c (:bezier-curve path))
-                         c)
-                       :catmull-rom
-                       (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
-                         (.getBezierCurve cr-obj))
-                       nil)]
-           (when curve
-             (let [transformed (Bezier2D/transform curve a b c d tx ty)]
+  (p/p :vector/render-path
+       (when-let [curve (case (:path-type path)
+                          :bezier
+                          (bezier/edn->curve (:bezier-curve path))
+                          :catmull-rom
+                          (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
+                            (.getBezierCurve cr-obj))
+                          nil)]
+         (let [transformed
+               (if-let [transform (:transform layer)]
+                 (Bezier2D/transform curve (float-array transform))
+                 curve)]
+           (if-let [style (:style path)]
+             (do
                (when-let [fill (:fill style)]
                  (draw-fill! rasterizer canvas w h transformed fill dirty-tiles tile-size))
                (when-let [stroke (:stroke style)]
                  (draw-stroke! rasterizer canvas w h transformed stroke
                                (:width-samples path) (:arc-params path)
-                               dirty-tiles tile-size))))))))
+                               dirty-tiles tile-size)))
+             (throw (ex-info "absent style" {})))))))
 
 ;; ---------- 主光栅化逻辑（返回 Canvas）----------
 (defn- rasterize-paths!
@@ -130,11 +128,12 @@
   (p/profile {:id :vector/render}
              (let [tile-size  (.getTileSize dest-canvas)   ;; 使用目标画布的瓦片大小
                    rasterizer (build-rasterizer layer)
-                   src-canvas (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
+                   tmp-canvas (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
                    blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
                    opacity    (float (get layer :opacity 1.0))]
                ;; 混合到目标画布（使用单位矩阵，关闭亚像素）
-               (PixelBlitter/blit dest-canvas w h src-canvas
+               (PixelBlitter/blit dest-canvas w h tmp-canvas
                                   lu/identity-matrix blend-mode opacity
                                   (top.kzre.krro.util.tile.AntiAlias/noAntiAlias) dirty-tiles false)
+               (.clear tmp-canvas)
                layer)))

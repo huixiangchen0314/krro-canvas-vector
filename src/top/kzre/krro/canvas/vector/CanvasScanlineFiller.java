@@ -8,7 +8,6 @@ import top.kzre.krro.util.tile.TiledCanvas;
 
 import java.util.*;
 
-import static top.kzre.krro.canvas.vector.TileClipper.clip;
 
 public class CanvasScanlineFiller {
     public enum AAMode { NONE, ANALYTIC, SSAA2x2 }
@@ -32,8 +31,9 @@ public class CanvasScanlineFiller {
         if (tw <= 0 || th <= 0) return;
 
         // 多边形裁剪到瓦片矩形，并偏移到局部坐标
-        double[] clipped = clip(polygon, x0, y0, tw, th);
+        double[] clipped = TileClipper.clip(polygon, x0, y0, tw, th);
         if (clipped == null) return;
+
         for (int i = 0; i < clipped.length; i += 2) {
             clipped[i] -= x0;
             clipped[i + 1] -= y0;
@@ -50,14 +50,14 @@ public class CanvasScanlineFiller {
                 fillNone(dst, stride, clipped, color, rule, localX0, localY0, tw, th);
                 break;
             case ANALYTIC:
-                fillAnalytic(dst, stride, clipped, color, rule, localX0, localY0, tw, th);
+                fillNone(dst, stride, clipped, color, rule, localX0, localY0, tw, th);
+//                fillAnalytic(dst, stride, clipped, color, rule, localX0, localY0, tw, th);
                 break;
             case SSAA2x2:
                 fillSSAA2x2(dst, stride, clipped, color, rule, localX0, localY0, tw, th);
                 break;
         }
     }
-
     // ---------- 普通填充（无抗锯齿） ----------
     private static void fillNone(float[] dst, int stride, double[] polygon, float[] color, FillRule rule,
                                  int startX, int startY, int w, int h) {
@@ -121,7 +121,9 @@ public class CanvasScanlineFiller {
     }
 
     // ---------- 分析抗锯齿 ----------
-    private static void fillAnalytic(float[] dst, int stride, double[] polygon, float[] color, FillRule rule,
+    private static void fillAnalytic(float[] dst, int stride, double[] polygon,
+                                     float[] color,
+                                     FillRule rule,
                                      int startX, int startY, int w, int h) {
         List<Edge>[] buckets = buildBuckets(polygon, h);
         List<Edge> active = new ArrayList<>();
@@ -268,27 +270,4 @@ public class CanvasScanlineFiller {
         return buckets;
     }
 
-    // 内部 Edge 类
-    private static class Edge {
-        final int ymin, ymax;
-        final double dx;
-        double x;
-        final int winding;
-
-        Edge(double x1, double y1, double x2, double y2) {
-            if (y1 < y2) {
-                ymin = (int) Math.ceil(y1);
-                ymax = (int) Math.ceil(y2);
-                dx = (x2 - x1) / (y2 - y1);
-                x = x1 + dx * (ymin - y1);
-                winding = 1;
-            } else {
-                ymin = (int) Math.ceil(y2);
-                ymax = (int) Math.ceil(y1);
-                dx = (x2 - x1) / (y2 - y1);
-                x = x2 + dx * (ymin - y2);
-                winding = -1;
-            }
-        }
-    }
 }

@@ -3,7 +3,6 @@ package top.kzre.krro.canvas.vector;
 import top.kzre.curve.bezier2d.ControlPoint;
 import top.kzre.curve.bezier2d.Curve;
 import top.kzre.krro.util.tile.Canvas;
-import static top.kzre.krro.canvas.vector.TileClipper.clip;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +69,7 @@ public class CanvasCurveRasterizer {
                                Set<Long> dirtyTiles, int tileSize) {
         // 1. 对曲线进行段级裁剪，丢弃完全在画布外的部分
         List<Curve> visibleCurves = new ArrayList<>();
-        clip(visibleCurves, curve, w, h);
+        TileClipper.clip(visibleCurves, curve, w, h);
 
         for (Curve subCurve : visibleCurves) {
             if (isStraightLine(subCurve)) {
