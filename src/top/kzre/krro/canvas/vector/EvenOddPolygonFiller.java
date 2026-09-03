@@ -9,6 +9,7 @@ import java.util.Set;
 
 public final class EvenOddPolygonFiller extends AbstractPolygonFiller {
 
+
     private final float[] color;
 
     public EvenOddPolygonFiller(float[] color) {
@@ -33,10 +34,17 @@ public final class EvenOddPolygonFiller extends AbstractPolygonFiller {
             int th = Math.min(tileSize, canvasH - y0);
             if (tw <= 0 || th <= 0) continue;
 
+            // TODO 池化
             // 裁剪多边形到瓦片区域（局部坐标）
-            Polygon clipped = polygon.clipToRect(x0, y0, tw, th);
-            if (clipped == null || clipped.getVertexCount() < 3) continue;
 
+            Polygon clipped = polygon.clipToRect(x0 - CLIP_EDGE_EXPAND, y0, tw, th);
+            if (clipped == null || clipped.getVertexCount() < 3) continue;
+            double[] localCoords = clipped.getCoords().clone();
+            for (int i = 0; i < localCoords.length; i += 2) {
+                localCoords[i] -= x0;
+                localCoords[i + 1] -= y0;
+            }
+            clipped = new Polygon(localCoords);
             // 构建边缘表（相对于瓦片局部坐标）
             List<Edge>[] buckets = buildEdgeBuckets(clipped, th);
             List<Edge> active = new ArrayList<>();

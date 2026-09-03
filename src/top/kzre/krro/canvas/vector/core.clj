@@ -221,9 +221,8 @@
 
                (let [blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
                      opacity (float (get layer :opacity 1.0))
-                     matrix (float-array lu/identity-matrix)
                      aa (top.kzre.krro.util.tile.AntiAlias/noAntiAlias)]
                  (PixelBlitter/blit dest-canvas canvas-w canvas-h tmp-canvas
-                                    matrix blend-mode opacity aa dirty-tiles false)
+                                    lu/identity-matrix blend-mode opacity aa dirty-tiles false)
                  (.clear tmp-canvas)))
              layer))

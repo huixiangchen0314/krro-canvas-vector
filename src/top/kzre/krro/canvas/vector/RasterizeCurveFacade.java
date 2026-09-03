@@ -296,6 +296,7 @@ public final class RasterizeCurveFacade {
             if (width <= 0 || height <= 0) {
                 throw new IllegalStateException("width and height must be set");
             }
+
             if (dirtyTiles == null) {
                 throw new IllegalStateException("dirtyTiles must be set (use empty set if none)");
             }

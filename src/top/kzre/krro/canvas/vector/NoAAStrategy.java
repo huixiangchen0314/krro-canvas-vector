@@ -5,8 +5,8 @@ import top.kzre.krro.util.tile.TiledCanvas;
 public final class NoAAStrategy implements AntiAliasStrategy {
     @Override
     public void fillPixel(double x, double y, float[] color, TiledCanvas canvas) {
-        int ix = (int) Math.round(x);
-        int iy = (int) Math.round(y);
+        int ix = (int) Math.floor(x);
+        int iy = (int) Math.floor(y);
         // 直接设置像素（忽略透明度混合）
         canvas.setPixel(ix, iy, color);
     }

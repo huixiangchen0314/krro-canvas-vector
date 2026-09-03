@@ -131,13 +131,19 @@ public final class Polygon {
         return transform(new double[]{cos, -sin, 0, sin, cos, 0});
     }
 
+    public Polygon clipToRect(double rectMinX, double rectMinY, double width, double height) {
+        double maxX = rectMinX + width;
+        double maxY = rectMinY + height;
+        return clip(rectMinX,rectMinY, maxX, maxY);
+    }
+
     // ---------- 裁剪 ----------
     /**
      * 使用 Sutherland–Hodgman 算法裁剪多边形到矩形区域。
      * @param rectMinX, rectMinY, rectMaxX, rectMaxY 裁剪矩形（包含边界）。
      * @return 裁剪后的多边形，若完全在外则返回 null。
      */
-    public Polygon clipToRect(double rectMinX, double rectMinY, double rectMaxX, double rectMaxY) {
+    public Polygon clip(double rectMinX, double rectMinY, double rectMaxX, double rectMaxY) {
         if (rectMinX >= rectMaxX || rectMinY >= rectMaxY) {
             return null;
         }
@@ -158,26 +164,36 @@ public final class Polygon {
         double[] src = poly.coords;
         DoubleList out = new DoubleList(n * 2 + 4);
         for (int i = 0, j = n - 1; i < n; j = i++) {
-            double x1 = src[2 * j], y1 = src[2 * j + 1];
-            double x2 = src[2 * i], y2 = src[2 * i + 1];
+            double x1 = src[2 * j];
+            double y1 = src[2 * j + 1];
+            double x2 = src[2 * i];
+            double y2 = src[2 * i + 1];
             double v1 = isX ? x1 : y1;
             double v2 = isX ? x2 : y2;
 
-            boolean inside1 = keepGreater ? (v1 >= limit - 1e-12) : (v1 <= limit + 1e-12);
-            boolean inside2 = keepGreater ? (v2 >= limit - 1e-12) : (v2 <= limit + 1e-12);
+            boolean inside1 = keepGreater ? (v1 > limit - 1e-9) : (v1 < limit + 1e-9);
+            boolean inside2 = keepGreater ? (v2 > limit - 1e-9) : (v2 < limit + 1e-9);
 
             if (inside1) {
                 if (inside2) {
+                    // 两点都在范围内
                     out.add(x2, y2);
                 } else {
+                    // 点1 在范围内，输出交点
                     double t = (limit - v1) / (v2 - v1);
                     out.add(x1 + t * (x2 - x1), y1 + t * (y2 - y1));
                 }
             } else {
                 if (inside2) {
+                    // 点2在范围内，输出交点和点2
                     double t = (limit - v1) / (v2 - v1);
-                    out.add(x1 + t * (x2 - x1), y1 + t * (y2 - y1));
-                    out.add(x2, y2);
+                    double ix = x1 + t * (x2 - x1);
+                    double iy = y1 + t * (y2 - y1);
+                    out.add(ix, iy);
+                    // 如果交点与点2距离很近，则不再添加点2（避免超短边）
+                    if (Math.hypot(ix - x2, iy - y2) > 1e-6) {
+                        out.add(x2, y2);
+                    }
                 }
             }
         }

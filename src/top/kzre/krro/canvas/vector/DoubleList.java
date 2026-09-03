@@ -36,7 +36,20 @@ public final class DoubleList {
         System.arraycopy(data, 0, result, 0, size);
         return result;
     }
+    // 新增：移除最后一个元素
+    public void removeLast() {
+        if (size > 0) {
+            size--;
+        }
+    }
 
+    // 新增：设置指定索引的值
+    public void set(int index, double value) {
+        if (index < 0 || index >= size) {
+            throw new IndexOutOfBoundsException("Index: " + index + ", Size: " + size);
+        }
+        data[index] = value;
+    }
 
     public int size() { return size; }
     public double get(int index) { return data[index]; }

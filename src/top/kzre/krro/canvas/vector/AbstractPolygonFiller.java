@@ -6,15 +6,21 @@ import java.util.List;
 public abstract class AbstractPolygonFiller implements PolygonFiller {
 
     /**
+     * 裁剪边缘拓展，避免裁剪误差导致的错误渲染
+     */
+    public static final int CLIP_EDGE_EXPAND = 1;
+
+    /**
      * 构建边缘表（bucket），每个桶对应于扫描线 y 坐标。
      * 边缘表存储了从当前顶点开始到下一个顶点的边信息。
      */
     @SuppressWarnings("unchecked")
-    protected static List<Edge>[] buildEdgeBuckets(Polygon polygon, int h) {
-        List<Edge>[] buckets = new List[h];
-        for (int i = 0; i < h; i++) {
+    protected static List<Edge>[] buildEdgeBuckets(Polygon polygon, int lines) {
+        List<Edge>[] buckets = new List[lines];
+        for (int i = 0; i < lines; i++) {
             buckets[i] = new ArrayList<>();
         }
+
         int n = polygon.getVertexCount();
         for (int i = 0; i < n; i++) {
             int j = (i + 1) % n;
@@ -23,9 +29,11 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
             double x2 = polygon.getX(j);
             double y2 = polygon.getY(j);
             if (Math.abs(y2 - y1) < 1e-12) continue; // 忽略水平边
+
+
             Edge edge = new Edge(x1, y1, x2, y2);
             int y = Math.max(0, edge.ymin);
-            if (y < h) {
+            if (y < lines) {
                 buckets[y].add(edge);
             }
         }

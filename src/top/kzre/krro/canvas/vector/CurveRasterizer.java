@@ -20,6 +20,7 @@ public final class CurveRasterizer {
         int h = context.getHeight();
         List<Curve> visibleCurves = new ArrayList<>();
         clipCurve(visibleCurves, curve, w, h);
+        visibleCurves.add(curve);
         for (Curve c : visibleCurves) {
             rasterizeSingleCurve(c, context);
         }
@@ -88,7 +89,6 @@ public final class CurveRasterizer {
 
         private CurveFlattener flattener;
         private final List<CurveRenderer> renderers = new ArrayList<>();
-
 
         /**
          * 设置曲线展平器（必须调用）。
