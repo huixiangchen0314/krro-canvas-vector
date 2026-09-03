@@ -23,16 +23,14 @@ import java.util.List;
  *   <li>闭合轮廓。</li>
  * </ol>
  *
- * @see CurveRenderer
+ * @see PathRenderer
  * @see CapStrategy
  * @see JoinStrategy
  * @see PolygonFiller
  */
-public final class CurveStroke extends CurveRenderer {
-
+public final class PathStroke extends PathRenderer {
     private final CapStrategy cap;
     private final JoinStrategy join;
-    private final PolygonFiller filler;
     private final double miterLimit;
 
     /**
@@ -40,25 +38,21 @@ public final class CurveStroke extends CurveRenderer {
      *
      * @param cap        端点样式策略
      * @param join       连接样式策略
-     * @param filler     多边形填充器（用于填充生成的轮廓）
      * @param miterLimit 斜接限制（相对于半宽的倍数），仅对 MITER 连接生效
      */
-    public CurveStroke(CapStrategy cap, JoinStrategy join, PolygonFiller filler, double miterLimit) {
+    public PathStroke(CapStrategy cap, JoinStrategy join, double miterLimit) {
         this.cap = cap;
         this.join = join;
-        this.filler = filler;
         this.miterLimit = miterLimit;
     }
 
     @Override
-    public void render(Path path, RenderContext context) {
+    public Polygon render(Path path, RenderContext context) {
         List<Vertex> vertices = path.getVertices();
-        if (vertices.size() < 2) return;
+        if (vertices.size() < 2) return null;
 
-        Polygon polygon = generateOutline(vertices);
-        if (!polygon.isEmpty()) {
-            filler.fill(polygon, context);
-        }
+        return generateOutline(vertices);
+
     }
 
     /**
@@ -73,7 +67,7 @@ public final class CurveStroke extends CurveRenderer {
      */
     private Polygon generateOutline(List<Vertex> vertices) {
         int n = vertices.size();
-        if (n < 2) return new Polygon(new double[0]);
+        if (n < 2) return null;
 
         // 处理两个顶点的情况：直接生成矩形
         if (n == 2) {

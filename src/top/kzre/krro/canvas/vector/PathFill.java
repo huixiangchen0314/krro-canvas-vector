@@ -2,25 +2,19 @@ package top.kzre.krro.canvas.vector;
 
 import java.util.List;
 
-public final class CurveFill extends CurveRenderer {
-
-    private final PolygonFiller filler;
-
-    public CurveFill(PolygonFiller filler) {
-        this.filler = filler;
-    }
+public final class PathFill extends PathRenderer {
 
     @Override
-    public void render(Path path, RenderContext context) {
+    public Polygon render(Path path, RenderContext context) {
         // 只处理闭合路径
         if (!path.isClosed()) {
-            return;
+            return null;
         }
 
         List<Vertex> vertices = path.getVertices();
         int n = vertices.size();
         if (n < 3) {
-            return; // 至少需要三个顶点才能构成有效多边形
+            return null; // 至少需要三个顶点才能构成有效多边形
         }
 
         // 提取顶点坐标
@@ -31,7 +25,7 @@ public final class CurveFill extends CurveRenderer {
             coords[2 * i + 1] = v.getY();
         }
 
-        Polygon polygon = new Polygon(coords);
-        filler.fill(polygon, context);
+       return new Polygon(coords);
+
     }
 }

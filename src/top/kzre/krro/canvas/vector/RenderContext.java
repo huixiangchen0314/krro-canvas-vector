@@ -50,7 +50,7 @@ public final class RenderContext {
     }
 
     public static class Builder {
-        public AntiAliasStrategy antiAlias;
+        private AntiAliasStrategy antiAlias;
         private TiledCanvas destCanvas;
         private int width;
         private int height;
