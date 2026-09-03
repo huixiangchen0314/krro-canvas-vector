@@ -51,7 +51,7 @@
 (defn keyword->antialias
   "将 Clojure 关键字转换为 AntiAlias 枚举。"
   [kw]
-  (if kw AntiAlias/ANALYTIC AntiAlias/DISABLED))
+  (if kw AntiAlias/ANALYTIC AntiAlias/NONE))
 
 (defn keyword->cap
   "将 Clojure 关键字转换为 Cap 枚举。"

@@ -148,7 +148,7 @@ public final class RenderCurveTaskBuilder {
 
         private AntiAliasStrategy createAAStrategy(AntiAlias mode) {
             switch (mode) {
-                case DISABLED: return new NoAAStrategy();
+                case NONE: return new NoAAStrategy();
                 case ANALYTIC: return new AnalyticAAStrategy();
                 default: throw new IllegalArgumentException("Unsupported AA mode: " + mode);
             }

@@ -1,11 +1,6 @@
 package top.kzre.krro.canvas.vector;
 
-/**
- * 封装描边连接点（Join）生成所需的所有几何参数。
- * <p>
- * 此类是不可变的数据容器，用于在 {@link JoinStrategy} 和 {@link StrokeOutliner} 之间传递信息。
- * </p>
- */
+
 public final class JoinContext {
     private final double prevX, prevY;     // 前一段边缘上的点（例如左边缘上的点）
     private final double currX, currY;     // 当前段边缘上的点

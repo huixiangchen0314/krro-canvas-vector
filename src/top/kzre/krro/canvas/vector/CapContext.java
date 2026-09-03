@@ -1,11 +1,5 @@
 package top.kzre.krro.canvas.vector;
 
-/**
- * 封装描边端点（Cap）生成所需的所有几何参数。
- * <p>
- * 此类是不可变的数据容器，用于在 {@link CapStrategy} 和 {@link StrokeOutliner} 之间传递信息。
- * </p>
- */
 public final class CapContext {
     private final double centerX, centerY;           // 端点中心点坐标
     private final double tangentX, tangentY; // 单位切线方向（指向路径方向）

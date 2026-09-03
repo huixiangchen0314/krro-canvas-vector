@@ -18,7 +18,7 @@ package top.kzre.krro.canvas.vector;
  *
  * @see JoinContext
  * @see DoubleList
- * @see StrokeOutliner
+
  */
 @FunctionalInterface
 public interface JoinStrategy {
