@@ -97,12 +97,14 @@ public final class CurveStroke extends CurveRenderer {
         DoubleList poly = new DoubleList(n * 8 + 16);
         List<JoinContext> reverseJoins = new ArrayList<>(n);
 
-        // ---- 第一个顶点（索引0） ----
+        // ---- 第一个顶点 ----
         Vertex v0 = vertices.get(0);
         Vertex v1 = vertices.get(1);
+        // 使用第一个顶点的法线（从 v0 到 v1 方向）
         double dx0 = v1.getX() - v0.getX();
         double dy0 = v1.getY() - v0.getY();
         double len0 = Math.hypot(dx0, dy0);
+        // 如果路径长度为零，使用默认法线 (0, 1)
         double nx0 = (len0 < 1e-12) ? 0 : -dy0 / len0;
         double ny0 = (len0 < 1e-12) ? 1 : dx0 / len0;
         double hw0 = v0.getWidth() * 0.5;
@@ -159,29 +161,34 @@ public final class CurveStroke extends CurveRenderer {
             prevRightY = ry;
         }
 
-        // ---- 处理最后一个顶点（索引 n-1） ----
+        // ---- 最后一个顶点 ----
         Vertex last = vertices.get(n - 1);
         Vertex prevLast = vertices.get(n - 2);
+        // 使用最后一段的方向作为切线（反向）
         double lxLast = last.getX() - prevLast.getX();
         double lyLast = last.getY() - prevLast.getY();
         double lenLast = Math.hypot(lxLast, lyLast);
-        if (lenLast > 1e-12) { lxLast /= lenLast; lyLast /= lenLast; }
-        double hwLast = last.getWidth() * 0.5;
-        double leftLastX = prevLeftX, leftLastY = prevLeftY;
+        if (lenLast < 1e-12) { lxLast = 0; lyLast = 1; } // fallback
         double nxLast = -lyLast / lenLast;
         double nyLast = lxLast / lenLast;
+        double hwLast = last.getWidth() * 0.5;
+        double leftLastX = prevLeftX, leftLastY = prevLeftY;
         double rightLastX = last.getX() - nxLast * hwLast;
         double rightLastY = last.getY() - nyLast * hwLast;
 
-        // 最后一个反向 Join（连接 last 和 prevLast），顺序为 当前->前一个
+        // 最后一个反向 Join
         JoinContext lastRightJoin = new JoinContext(rightLastX, rightLastY,
                 prevRightX, prevRightY,
                 last.getX(), last.getY(), hwLast, miterLimit);
         reverseJoins.add(lastRightJoin);
 
         // 终点 Cap
-        cap.addCap(new CapContext(last.getX(), last.getY(), -lxLast, -lyLast, hwLast,
-                rightLastX, rightLastY, leftLastX, leftLastY, false), poly);
+        cap.addCap(new CapContext(
+                last.getX(), last.getY(),
+                -lxLast, -lyLast,
+                hwLast,
+                rightLastX, rightLastY,
+                leftLastX, leftLastY, false), poly);
 
         // ---- 反向输出右侧边 ----
         poly.add(rightLastX, rightLastY);
@@ -194,7 +201,7 @@ public final class CurveStroke extends CurveRenderer {
         }
 
         // ---- 闭合轮廓 ----
-        poly.add(left0X, left0Y);
+        poly.add(right0X, right0Y);
 
         double[] outline = poly.toArray();
         if (outline.length < 6) return new Polygon(new double[0]);

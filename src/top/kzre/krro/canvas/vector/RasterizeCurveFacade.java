@@ -159,7 +159,7 @@ public final class RasterizeCurveFacade {
     }
 
     public static final class Builder {
-        private List<Curve> curves;
+        private final List<Curve> curves = new ArrayList<>();
         private TiledCanvas canvas;
         private int width;
         private int height;
@@ -182,7 +182,14 @@ public final class RasterizeCurveFacade {
             if (curves == null || curves.isEmpty()) {
                 throw new IllegalArgumentException("curves must not be null or empty");
             }
-            this.curves = new ArrayList<>(curves);
+            this.curves.addAll(curves);
+            return this;
+        }
+        public Builder curves(Curve curve) {
+            if (curve == null) {
+                throw new IllegalArgumentException("curve must not be null or empty");
+            }
+            this.curves.add(curve);
             return this;
         }
 
@@ -233,7 +240,7 @@ public final class RasterizeCurveFacade {
         }
 
         // ---- 描边配置 ----
-        public Builder stroke(float[] color, Cap cap, Join join, double width) {
+        public Builder strokeFixed(float[] color, Cap cap, Join join, double width) {
             if (color == null || color.length < 4) {
                 throw new IllegalArgumentException("stroke color must be float[4]");
             }

@@ -1,30 +1,35 @@
 (ns top.kzre.krro.canvas.vector.core
-  "矢量图层门面：内部使用 Canvas 高效光栅化，最终混合到 Canvas。"
+  "矢量渲染核心：提供独立于图层的曲线渲染函数，以及矢量图层的渲染入口。"
   (:require
-    [top.kzre.krro.canvas.core.core :as c]
-    [top.kzre.krro.canvas.core.layer.util :as lu]
-    [top.kzre.krro.canvas.vector.spec]
-    [top.kzre.krro.curve.bezier2d.core :as bezier]
-    [top.kzre.krro.curve.catmullrom2d.core :as cr]
-    [taoensso.tufte :as p])
+   [taoensso.tufte :as p]
+   [top.kzre.krro.canvas.core.core :as c]
+   [top.kzre.krro.canvas.core.layer.util :as lu]
+   [top.kzre.krro.curve.bezier2d.core :as bezier]
+   [top.kzre.krro.curve.catmullrom2d.core :as cr])
   (:import
-    (java.util Collection HashSet Set UUID)
-    (top.kzre.curve.bezier2d Bezier2D Curve)
-    (top.kzre.krro.canvas.vector
-      AntiAlias ArcLengthSampleWidthFunc Cap CanvasCurveRasterizer FillRule Join RasterizerConfig)
-    (top.kzre.krro.canvas.core.layer PixelBlitter)
-    (top.kzre.krro.util.tile Canvas TiledCanvas)))
+   (java.util Collection UUID)
+   (java.util.function DoubleUnaryOperator)
+   [top.kzre.colorutils.color RGB]
+   (top.kzre.curve.bezier2d Bezier2D Curve)
+   (top.kzre.krro.canvas.core.layer LayerUtils PixelBlitter)
+   (top.kzre.krro.canvas.vector
+    AntiAlias
+    ArcLengthSampleWidthFunc
+    Cap
+    FillRule
+    Join
+    RasterizeCurveFacade)
+   (top.kzre.krro.util.tile TiledCanvas)))
 
-;; ═══════════════════════════════════════════════
-;; 图层构造函数（不变）
-;; ═══════════════════════════════════════════════
 (defn make-vector-layer
-  [& {:keys [id name opacity blend-mode visible backend]
+  "创建矢量图层数据结构。"
+  [& {:keys [id name opacity blend-mode visible backend antialias]
       :or   {id         (keyword (str "layer-" (UUID/randomUUID)))
              name       "Vector Layer"
              opacity    1.0
              blend-mode :normal
-             visible   true
+             visible    true
+             antialias true
              backend    :default}
       :as   opts}]
   (merge
@@ -33,107 +38,192 @@
      :name         name
      :opacity      opacity
      :blend-mode   blend-mode
-     :visible     visible
+     :visible      visible
      :backend      backend
      :paths-map    {}
      :path-order   []
-     :antialiased true}
-    (select-keys opts [:x :y :scale-x :scale-y :rotation])))
+     :antialias   antialias}
+    (select-keys opts [:x :y :scale-x :scale-y :rotation :transform])))
 
-;; ═══════════════════════════════════════════════
-;; 创建光栅化器（使用新的 CanvasCurveRasterizer）
-;; ═══════════════════════════════════════════════
-(defn build-rasterizer [layer]
-  (let [config (RasterizerConfig.)]
-    (if (:antialiased layer)
-      (.setAntiAlias config AntiAlias/ANALYTIC)
-      (.setAntiAlias config AntiAlias/DISABLED))
-    (CanvasCurveRasterizer. config)))
+;; ============================================================================
+;; 辅助转换函数
+;; ============================================================================
 
-;; ---------- 绘制辅助函数（直接写入 Canvas）----------
-(defn draw-fill!
-  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h ^Curve curve fill-style
-   ^Set dirty-tiles tile-size]
-  (p/p :vector/draw-fill
-       (let [color     (float-array (:color fill-style))
-             fill-rule (case (:fill-rule fill-style)
-                         :even-odd FillRule/EVEN_ODD
-                         :non-zero FillRule/NON_ZERO
-                         FillRule/EVEN_ODD)]
-         (.fill rasterizer canvas w h curve color fill-rule dirty-tiles (int tile-size)))))
+(defn keyword->antialias
+  "将 Clojure 关键字转换为 AntiAlias 枚举。"
+  [kw]
+  (case kw
+    :disabled AntiAlias/DISABLED
+    :analytic AntiAlias/ANALYTIC
+    :ssaa AntiAlias/SSAA_2x2
+    (throw (ex-info "Unknown anti-alias mode" {:mode kw}))))
 
-(defn draw-stroke!
-  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h ^Curve curve stroke-style
-   width-samples arc-params ^Set dirty-tiles tile-size]
-  (p/p :vector/draw-stroke
-       (let [color (float-array (:color stroke-style))
-             cap   (case (:cap stroke-style)
-                     :butt Cap/BUTT :round Cap/ROUND :square Cap/SQUARE Cap/BUTT)
-             join  (case (:join stroke-style)
-                     :miter Join/MITER :round Join/ROUND :bevel Join/BEVEL Join/MITER)
-             has-var-width (and (some? width-samples)
-                                (some? arc-params)
-                                (= (count width-samples) (count arc-params))
-                                (> (count width-samples) 1))
-             width (:width stroke-style 50)]
-         (cond
-           has-var-width
-           (let [width-fn (ArcLengthSampleWidthFunc. (double-array arc-params) (double-array width-samples))]
-             (.strokeVariable rasterizer canvas w h curve width-fn color cap join
-                              dirty-tiles (int tile-size)))
-           (number? width)
-           (.strokeFixed rasterizer canvas w h curve (float width) color cap join
-                         dirty-tiles (int tile-size))
-           :else nil))))
+(defn keyword->cap
+  "将 Clojure 关键字转换为 Cap 枚举。"
+  [kw]
+  (case kw
+    :butt Cap/BUTT
+    :round Cap/ROUND
+    :square Cap/SQUARE
+    (throw (ex-info "Unknown cap style" {:mode kw}))))
 
-;; ---------- 单路径渲染（应用图层变换）----------
-(defn- render-path-transformed!
-  [^CanvasCurveRasterizer rasterizer ^Canvas canvas w h path layer
-   ^Set dirty-tiles tile-size]
-  (p/p :vector/render-path
-       (when-let [curve (case (:path-type path)
-                          :bezier
-                          (bezier/edn->curve (:bezier-curve path))
-                          :catmull-rom
-                          (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
-                            (.getBezierCurve cr-obj))
-                          nil)]
-         (let [transformed
-               (if-let [transform (:transform layer)]
-                 (Bezier2D/transform curve (float-array transform))
-                 curve)]
-           (if-let [style (:style path)]
-             (do
-               (when-let [fill (:fill style)]
-                 (draw-fill! rasterizer canvas w h transformed fill dirty-tiles tile-size))
-               (when-let [stroke (:stroke style)]
-                 (draw-stroke! rasterizer canvas w h transformed stroke
-                               (:width-samples path) (:arc-params path)
-                               dirty-tiles tile-size)))
-             (throw (ex-info "absent style" {})))))))
+(defn keyword->join
+  "将 Clojure 关键字转换为 Join 枚举。"
+  [kw]
+  (case kw
+    :miter Join/MITER
+    :round Join/ROUND
+    :bevel Join/BEVEL
+    (throw (ex-info "Unknown join style" {:mode kw}))))
 
-;; ---------- 主光栅化逻辑（返回 Canvas）----------
-(defn- rasterize-paths!
-  [layer w h ^CanvasCurveRasterizer rasterizer ^Set dirty-tiles tile-size]
-  (p/p :vector/rasterize-paths
-       (let [canvas (TiledCanvas. (int tile-size))]   ;; 中间画布，瓦片尺寸与目标一致
-         (doseq [id (:path-order layer)]
-           (when-let [path (get (:paths-map layer) id)]
-             (render-path-transformed! rasterizer canvas w h path layer dirty-tiles tile-size)))
-         canvas)))   ;; 返回画布供后续混合
+(defn keyword->fill-rule
+  "将 Clojure 关键字转换为 FillRule 枚举。"
+  [kw]
+  (case kw
+    :even-odd FillRule/EVEN_ODD
+    :non-zero FillRule/NON_ZERO
+    (throw (ex-info "Unknown fill rule" {:mode kw}))))
 
-;; ---------- 图层渲染入口 ----------
+(defn build-width-func
+  "从描边样式构建宽度函数。
+   支持固定宽度（:width）或可变宽度（:width-samples + :arc-params）。
+   返回 DoubleUnaryOperator，若无法构建则返回 nil。"
+  [stroke-style]
+  (let [width (:width stroke-style)
+        width-samples (:width-samples stroke-style)
+        arc-params (:arc-params stroke-style)]
+    (cond
+      (and width-samples arc-params
+           (= (count width-samples) (count arc-params))
+           (> (count width-samples) 1))
+      (ArcLengthSampleWidthFunc. (double-array arc-params)
+                                 (double-array width-samples))
+
+      (number? width)
+      (reify DoubleUnaryOperator
+        (applyAsDouble [_ _] (double width)))
+
+      :else nil)))
+
+;; ============================================================================
+;; 公共渲染 API
+;; ============================================================================
+
+(defn render-path!
+  "渲染单条曲线到临时画布。
+   参数:
+   - canvas: 临时画布 (TiledCanvas)
+   - canvas-w, canvas-h: 画布尺寸
+   - curve: 待渲染的曲线 (Curve)
+   - opts: 可选参数 map，支持:
+       :antialias  - :disabled, :analytic, :ssaa (默认 :analytic)
+       :flatness   - 展平参数 (默认 0.25)
+       :fill       - 填充样式 {:color [r g b a] :rule :even-odd 或 :non-zero}
+       :stroke     - 描边样式 {:color [r g b a] :canvas-w 1.0
+                                :cap :butt/:round/:square
+                                :join :miter/:round/:bevel
+                                :canvas-w-samples 和 :arc-params 用于可变宽度}"
+  [^TiledCanvas canvas canvas-w canvas-h ^Curve curve
+   & {:keys [antialias flatness dirty-tiles fill stroke]
+      :or {antialias :analytic
+           flatness 0.25}}]
+  (let [builder (-> (RasterizeCurveFacade/builder)
+                    (.canvas canvas)
+                    (.size canvas-w canvas-h)
+                    (.dirtyTiles (or dirty-tiles (LayerUtils/canvasTiles (.getTileSize canvas) (int canvas-w) (int canvas-h))))
+                    (.aaMode (keyword->antialias antialias))
+                    (.flatness flatness)
+                    (.curves curve))]
+    ;; 填充
+    (when fill
+      (let [color (float-array (:color fill))
+            rule (keyword->fill-rule (:rule fill :non-zero))]
+        (.fill builder color rule)))
+    ;; 描边
+    (when stroke
+      (let [color (float-array (:color stroke))
+            cap (keyword->cap (:cap stroke :butt))
+            join (keyword->join (:join stroke :miter))
+            width-fn (build-width-func stroke)]
+        (if width-fn
+          (.stroke builder color cap join width-fn)
+          (let [width (or (:width stroke) 1.0)]
+            (.strokeFixed builder color cap join width)))))
+    (-> builder .build .render)))
+
+(defn render-paths!
+  "批量渲染多条曲线到临时画布（共用同一配置，性能更优）。
+   参数同 render-path!，但 curves 为集合 (Collection<Curve>)。"
+  [^TiledCanvas canvas canvas-w  canvas-h ^Collection curves
+   & {:keys [antialias flatness dirty-tiles fill stroke]
+      :or {antialias :analytic
+           flatness 0.25}}]
+  (when-not (seq curves)
+    (let [builder (-> (RasterizeCurveFacade/builder)
+                      (.canvas canvas)
+                      (.size canvas-w canvas-h)
+                      (.dirtyTiles (or dirty-tiles (LayerUtils/canvasTiles (.getTileSize canvas) (int canvas-w) (int canvas-h))))
+                      (.aaMode (keyword->antialias antialias))
+                      (.flatness flatness)
+                      (.curves curves))]
+      ;; 填充
+      (when fill
+        (let [color (float-array (:color fill))
+              rule (keyword->fill-rule (:rule fill :non-zero))]
+          (.fill builder color rule)))
+      ;; 描边
+      (when stroke
+        (let [color (float-array (:color stroke))
+              cap (keyword->cap (:cap stroke :butt))
+              join (keyword->join (:join stroke :miter))
+              width-fn (build-width-func stroke)]
+          (if width-fn
+            (.stroke builder color cap join width-fn)
+            (let [width (or (:width stroke) 1.0)]
+              (.strokeFixed builder color cap join width)))))
+      (-> builder .build .render))))
+
+
+
 (defmethod c/render-layer! :vector
-  [layer ^Canvas dest-canvas w h {:keys [dirty-tiles]}]
+  [layer ^TiledCanvas dest-canvas canvas-w canvas-h {:keys [dirty-tiles]}]
   (p/profile {:id :vector/render}
-             (let [tile-size  (.getTileSize dest-canvas)   ;; 使用目标画布的瓦片大小
-                   rasterizer (build-rasterizer layer)
-                   tmp-canvas (rasterize-paths! layer w h rasterizer dirty-tiles tile-size)
-                   blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
-                   opacity    (float (get layer :opacity 1.0))]
-               ;; 混合到目标画布（使用单位矩阵，关闭亚像素）
-               (PixelBlitter/blit dest-canvas w h tmp-canvas
-                                  lu/identity-matrix blend-mode opacity
-                                  (top.kzre.krro.util.tile.AntiAlias/noAntiAlias) dirty-tiles false)
-               (.clear tmp-canvas)
-               layer)))
+             (let [tile-size (.getTileSize dest-canvas)
+                   antialias (if (:antialias layer) :analytic :disabled)
+                   flatness (or (get-in layer [:rasterizer :flatness]) 0.25)
+                   tmp-canvas (TiledCanvas. tile-size)      ; 临时画布，全量渲染
+                   ]
+
+               ;; 遍历所有路径，逐条渲染到临时画布
+               (doseq [path-id (:path-order layer)]
+                 (let [path (get (:paths-map layer) path-id)]
+                   (when-let [curve (case (:path-type path)
+                                      :bezier
+                                      (bezier/edn->curve (:bezier-curve path))
+                                      :catmull-rom
+                                      (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
+                                        (.getBezierCurve cr-obj))
+                                      nil)]
+                     (let [style (:style path)
+                           transformed-curve (if-let [transform (:transform layer)]
+                                               (Bezier2D/transform curve (float-array transform))
+                                               curve)
+                           opts {:antialias antialias
+                                 :flatness flatness}]
+                       (when-let [fill (:fill style)]
+                         (render-path! tmp-canvas canvas-w canvas-h transformed-curve
+                                       (assoc opts :fill fill
+                                                   :dirty-tiles dirty-tiles)))
+                       (when-let [stroke (:stroke style)]
+                         (render-path! tmp-canvas canvas-w canvas-h transformed-curve
+                                       (assoc opts :stroke stroke
+                                                   :dirty-tiles dirty-tiles)))))))
+
+               (let [blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
+                     opacity (float (get layer :opacity 1.0))
+                     matrix (float-array lu/identity-matrix)
+                     aa (top.kzre.krro.util.tile.AntiAlias/noAntiAlias)]
+                 (PixelBlitter/blit dest-canvas canvas-w canvas-h tmp-canvas
+                                    matrix blend-mode opacity aa dirty-tiles false)
+                 (.clear tmp-canvas)))
+             layer))
