@@ -107,18 +107,16 @@ public final class PathStroke extends PathRenderer {
             Vertex vCurr = vertices.get(i);
             Vertex vNext = vertices.get(i + 1);
 
+            double currX = vCurr.getX();
+            double currY = vCurr.getY();
             // 指向外侧的法向
             // (curr, next) 线段法向的计算
-            double dirX = vNext.getX() - vCurr.getX();
-            double dirY = vNext.getY() - vCurr.getY();
+            double dirX = vNext.getX() - currX;
+            double dirY = vNext.getY() - currY;
             double len = Math.hypot(dirX, dirY);
             double normalX = -dirY / len;
             double normalY = dirX / len;
 
-
-
-            double currX = vCurr.getX();
-            double currY = vCurr.getY();
             double currHalfWidth = vCurr.getWidth() * 0.5;
             // 计算 vPrev-end 的扩张点
             double prevEndLeftX = currX + prevNormalX * currHalfWidth * scaleX;
@@ -170,50 +168,12 @@ public final class PathStroke extends PathRenderer {
         double lastY = last.getY();
         double dirX = lastX - secondLast.getX();
         double dirY = lastY - secondLast.getY();
-        double len = Math.hypot(dirX, dirY);
-        double normalX = -dirY / len;
-        double normalY = dirX / len;
-        double secondLastX = secondLast.getX();
-        double secondLastY = secondLast.getY();
-        double secondLastHalfWidth = secondLast.getWidth() * 0.5;
-
-        // 计算 vPrev-end 的扩张点
-        double prevEndLeftX = secondLastX + prevNormalX * secondLastHalfWidth * scaleX;
-        double prevEndLeftY = secondLastY + prevNormalY * secondLastHalfWidth * scaleY;
-        double prevEndRightX = secondLastX - prevNormalX * secondLastHalfWidth * scaleX;
-        double prevEndRightY = secondLastY - prevNormalY * secondLastHalfWidth * scaleY;
-        // 计算 vCurr-start 的扩张点
-        double currStartLeftX = secondLastX + normalX + secondLastHalfWidth * scaleX;
-        double currStartLeftY = secondLastY + normalY + secondLastHalfWidth * scaleY;
-        double currStartRightX = secondLastX - normalX * secondLastHalfWidth * scaleX;
-        double currStartRightY = secondLastY - normalY * secondLastHalfWidth * scaleY;
-
-        poly.add(prevEndLeftX, prevEndLeftY);
-        join.addJoin(new JoinContext(
-                secondLast,
-                prevEndLeftX, prevEndLeftY,
-                currStartLeftX, currStartLeftY,
-                miterLimit,
-                context
-        ), poly);
-        poly.add(currStartLeftX, currStartLeftY);
-
-        JoinContext lastRightJoin = new JoinContext(
-                secondLast,
-                currStartRightX, currStartRightY,
-                prevEndRightX, prevEndRightY,
-                miterLimit,
-                context
-        );
-        reverseJoins.add(lastRightJoin);
 
         double lastHalfWidth = last.getWidth() * 0.5;
-        double lastLeftX = lastX + normalX * lastHalfWidth * scaleX;
-        double lastLeftY = lastY + normalY * lastHalfWidth * scaleY;
-        double lastRightX = lastX - normalX * lastHalfWidth * scaleX;
-        double lastRightY = lastY - normalY * lastHalfWidth * scaleY;
-
-
+        double lastLeftX = lastX + prevNormalX * lastHalfWidth * scaleX;
+        double lastLeftY = lastY + prevNormalY * lastHalfWidth * scaleY;
+        double lastRightX = lastX - prevNormalX * lastHalfWidth * scaleX;
+        double lastRightY = lastY - prevNormalY * lastHalfWidth * scaleY;
 
         // ---- 终点 Cap ----
         poly.add(lastLeftX, lastLeftY);
@@ -238,6 +198,7 @@ public final class PathStroke extends PathRenderer {
         }
 
         poly.add(rightX0, rightY0);
+
 
         double[] outline = poly.toArray();
         if (outline.length < 6) return new Polygon(new double[0]);

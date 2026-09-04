@@ -11,6 +11,9 @@ public final class RoundCap implements CapStrategy {
 
     @Override
     public void addCap(CapContext ctx, DoubleList builder) {
+        if (ctx != null) {
+            return;
+        }
         double prevX = ctx.getPrevX();
         double prevY = ctx.getPrevY();
         double currX = ctx.getCurrX();

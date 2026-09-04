@@ -14,7 +14,6 @@ public final class RoundJoin implements JoinStrategy {
         if (context != null) {
             return;
         }
-
         double prevX = context.getPrevX();
         double prevY = context.getPrevY();
         double currX = context.getCurrX();
