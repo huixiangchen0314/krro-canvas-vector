@@ -13,6 +13,9 @@ public final class RoundCap implements CapStrategy {
     public void addCap(CapContext ctx, DoubleList builder) {
         double cx = ctx.getCenterX(), cy = ctx.getCenterY();
         double r = ctx.getHalfWidth();
+        RenderContext renderContext = ctx.getRenderContext();
+        double scaleX = renderContext.getScaleX();
+        double scaleY = renderContext.getScaleY();
 
         double startX, startY, endX, endY;
         if (ctx.isStart()) {
@@ -31,17 +34,13 @@ public final class RoundCap implements CapStrategy {
         double delta = endAngle - startAngle;
         if (delta > 0) delta -= 2 * Math.PI; // 顺时针
 
-        // 添加起点（精确）
-        builder.add(startX, startY);
 
         // 添加中间点（不包括起点和终点）
         for (int i = 1; i < steps; i++) {
             double t = (double) i / steps;
             double a = startAngle + delta * t;
-            builder.add(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            builder.add(cx + Math.cos(a) * r * scaleX, cy + Math.sin(a) * r * scaleY);
         }
 
-        // 添加终点（精确）
-        builder.add(endX, endY);
     }
 }

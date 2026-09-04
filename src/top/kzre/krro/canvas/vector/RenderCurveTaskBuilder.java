@@ -100,9 +100,17 @@ public final class RenderCurveTaskBuilder {
         private int height = -1;
         private Set<Long> dirtyTiles;
         private AntiAlias aaMode;
+        private double scaleX = 1.0;
+        private double scaleY = 1.0;
 
         public RenderConfigurationConfigurer canvas(TiledCanvas canvas) {
             this.canvas = canvas;
+            return this;
+        }
+
+        public RenderConfigurationConfigurer scale(double sx, double sy) {
+            this.scaleX = sx;
+            this.scaleY = sy;
             return this;
         }
 
@@ -141,6 +149,7 @@ public final class RenderCurveTaskBuilder {
                     .destCanvas(canvas)
                     .width(width)
                     .height(height)
+                    .scale(scaleX, scaleY)
                     .dirtyTiles(dirtyTiles)
                     .antiAlias(aaStrategy)
                     .build();

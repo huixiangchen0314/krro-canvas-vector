@@ -9,6 +9,7 @@ public final class CurveRenderer {
     private CurveRenderer() {}
 
     public static void render(List<RenderableCurve> curves, RenderContext context){
+
         int canvasW = context.getWidth();
         int canvasH = context.getHeight();
         List<RenderablePolygon> polys = new ArrayList<>();
@@ -28,7 +29,8 @@ public final class CurveRenderer {
                 PathRenderer renderer = style.getRenderer();
                 PolygonFiller filler = style.getFiller();
                 for (Path path : paths) {
-                    Polygon polygon = renderer.render(path, context);
+                    Path simplified = path.simplify(0.5f);
+                    Polygon polygon = renderer.render(simplified, context);
                     if (polygon != null && polygon.isValid())
                     {
                         polys.add(new RenderablePolygon(polygon, filler));

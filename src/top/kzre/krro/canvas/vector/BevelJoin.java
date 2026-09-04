@@ -10,7 +10,7 @@ package top.kzre.krro.canvas.vector;
  * @see JoinStrategy
  * @see JoinContext
  */
-public final class BevelJoin implements JoinStrategy {
+public final class BevelJoin extends AbstractJoinStrategy {
 
     public static final BevelJoin INSTANCE = new BevelJoin();
 

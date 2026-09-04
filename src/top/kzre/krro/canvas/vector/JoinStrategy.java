@@ -20,7 +20,7 @@ package top.kzre.krro.canvas.vector;
  * @see DoubleList
 
  */
-@FunctionalInterface
+
 public interface JoinStrategy {
     /**
      * 生成连接处轮廓顶点并将其添加到构建器中。
@@ -29,4 +29,6 @@ public interface JoinStrategy {
      * @param builder 用于收集顶点的构建器（可变长度）。
      */
     void addJoin(JoinContext context, DoubleList builder);
+
+    boolean shouldJoin(JoinContext context);
 }

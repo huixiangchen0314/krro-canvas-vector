@@ -15,7 +15,7 @@ package top.kzre.krro.canvas.vector;
  * @see JoinStrategy
  * @see JoinContext
  */
-public final class MiterJoin implements JoinStrategy {
+public final class MiterJoin extends AbstractJoinStrategy {
 
     public static final MiterJoin INSTANCE = new MiterJoin();
 
@@ -31,8 +31,8 @@ public final class MiterJoin implements JoinStrategy {
         double prevY = context.getPrevY();
         double currX = context.getCurrX();
         double currY = context.getCurrY();
-        double vertexX = context.getVertexX();
-        double vertexY = context.getVertexY();
+        double vertexX = context.getCenterX();
+        double vertexY = context.getCenterY();
         double halfWidth = context.getHalfWidth();
         double miterLimit = context.getMiterLimit();
 

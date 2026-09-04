@@ -17,7 +17,7 @@ package top.kzre.krro.canvas.vector;
  * @see JoinStrategy
  * @see JoinContext
  */
-public final class RoundJoin implements JoinStrategy {
+public final class RoundJoin extends AbstractJoinStrategy {
 
     private final int steps;
 
@@ -41,48 +41,77 @@ public final class RoundJoin implements JoinStrategy {
         }
         this.steps = steps;
     }
+    private static final double TURN_BACK_THRESHOLD = 1e-3;
 
     @Override
     public void addJoin(JoinContext context, DoubleList builder) {
+
+        boolean tangentOutSide = context.isTangentOutSide();
+        if(!tangentOutSide) {
+            return;
+        }
+
         double prevX = context.getPrevX();
         double prevY = context.getPrevY();
         double currX = context.getCurrX();
         double currY = context.getCurrY();
-        double vertexX = context.getVertexX();
-        double vertexY = context.getVertexY();
-        double halfWidth = context.getHalfWidth();
+        double cx = context.getCenterX();
+        double cy = context.getCenterY();
+        double r = context.getHalfWidth();
+        double normalX = context.getOutsideNormalX();
+        double normalY = context.getOutsideNormalY();
+        RenderContext renderContext = context.getRenderContext();
+        double scaleX = renderContext.getScaleX();
+        double scaleY = renderContext.getScaleY();
 
-        // 计算两条边缘的方向向量（从顶点到边缘点）
-        double prevDX = prevX - vertexX;
-        double prevDY = prevY - vertexY;
-        double currDX = currX - vertexX;
-        double currDY = currY - vertexY;
+        // 计算两条边缘的方向向量
+        double prevDX = prevX - cx;
+        double prevDY = prevY - cy;
+        double currDX = currX - cx;
+        double currDY = currY - cy;
 
-        // 计算叉积，判断是否为外侧转角
-        double cross = prevDX * currDY - prevDY * currDX;
-        if (cross <= 0) {
-            return; // 内侧转角，不需要处理
-        }
-
-        // 计算角度
-        double angle1 = Math.atan2(prevDY, prevDX);
-        double angle2 = Math.atan2(currDY, currDX);
-        double angleDiff = angle2 - angle1;
-        if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
-        else if (angleDiff <= -Math.PI) angleDiff += 2 * Math.PI;
-
-        // 如果角度差太小，不生成圆弧
-        if (Math.abs(angleDiff) < 1e-6) {
+        double len1 = Math.hypot(prevDX, prevDY);
+        double len2 = Math.hypot(currDX, currDY);
+        if (len1 < 1e-12 || len2 < 1e-12) {
             return;
         }
 
-        // 生成圆弧顶点（从 angle1 到 angle2，顺时针）
-        for (int i = 0; i <= steps; i++) {
-            double t = (double) i / steps;
-            double angle = angle1 + angleDiff * t;
-            builder.add(vertexX + Math.cos(angle) * halfWidth,
-                    vertexY + Math.sin(angle) * halfWidth);
+        double cross = prevDX * currDY - prevDY * currDX;
+
+        if (cross < - TURN_BACK_THRESHOLD * scaleX *scaleY) {
+            return;
         }
+
+        // 计算两条边缘点相对于中心点的角度
+        double angle1 = Math.atan2(prevY - cy, prevX - cx);
+        double angle2 = Math.atan2(currY - cy, currX - cx);
+
+
+        double normalAngle = Math.atan2(normalY, normalX);
+        double diff1 = normalAngle - angle1;
+        double diff2 = angle2 - normalAngle;
+
+        double halfSteps = (double) steps / 2;
+        // 生成圆弧顶点
+        if (Math.abs(diff1) > 1e-6){
+            for (int i = 1; i <halfSteps; i++) {
+                double t = i / halfSteps;
+                double angle = angle1 + diff1 * t;
+                builder.add(cx + Math.cos(angle) * r * scaleX, cy + Math.sin(angle) * r * scaleY);
+            }
+        }
+
+        builder.add(cx + Math.cos(normalAngle) * r * scaleX, cy + Math.sin(normalAngle) * r * scaleY);
+
+        if (Math.abs(diff2) > 1e-6) {
+            for (int i = 1; i < halfSteps; i++) {
+                double t = i / halfSteps;
+
+                double angle = normalAngle + diff2 * t;
+                builder.add(cx + Math.cos(angle) * r * scaleX, cy + Math.sin(angle) * r * scaleY);
+            }
+        }
+
     }
 
     public int getSteps() {

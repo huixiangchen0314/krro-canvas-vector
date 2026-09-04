@@ -137,6 +137,8 @@ public final class Polygon {
         return clip(rectMinX,rectMinY, maxX, maxY);
     }
 
+
+
     // ---------- 裁剪 ----------
     /**
      * 使用 Sutherland–Hodgman 算法裁剪多边形到矩形区域。

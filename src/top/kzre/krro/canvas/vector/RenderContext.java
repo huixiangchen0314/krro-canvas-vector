@@ -14,14 +14,16 @@ public final class RenderContext {
     private final int height;              // 画布高度（像素）
     private final Set<Long> dirtyTiles;    // 需要更新的瓦片编码集合（可为 null 表示全部）
     private final AntiAliasStrategy antiAlias;
-
+    private final double scaleX;
+    private final double scaleY;
 
     private RenderContext(Builder builder) {
         this.destCanvas = builder.destCanvas;
         this.width = builder.width;
         this.height = builder.height;
         this.dirtyTiles = builder.dirtyTiles;
-
+        this.scaleX = builder.scaleX;
+        this.scaleY = builder.scaleY;
 
         this.antiAlias = builder.antiAlias;
     }
@@ -49,7 +51,17 @@ public final class RenderContext {
         return new Builder();
     }
 
+    public double getScaleX() {
+        return scaleX;
+    }
+
+    public double getScaleY() {
+        return scaleY;
+    }
+
     public static class Builder {
+        public double scaleX = 1.0;
+        private double scaleY = 1.0;
         private AntiAliasStrategy antiAlias;
         private TiledCanvas destCanvas;
         private int width;
@@ -72,6 +84,13 @@ public final class RenderContext {
             this.height = h;
             return this;
         }
+
+        public Builder scale(double sx, double sy) {
+            this.scaleX = sx;
+            this.scaleY = sy;
+            return this;
+        }
+
         public Builder antiAlias(AntiAliasStrategy antiAlias) {
             this.antiAlias = antiAlias;
             return this;

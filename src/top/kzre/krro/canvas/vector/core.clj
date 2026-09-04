@@ -7,18 +7,19 @@
    [top.kzre.krro.curve.bezier2d.core :as bezier]
    [top.kzre.krro.curve.catmullrom2d.core :as cr])
   (:import
-   (java.util Collection UUID)
-   (java.util.function DoubleUnaryOperator)
-   (top.kzre.curve.bezier2d Bezier2D )
-   (top.kzre.krro.canvas.core.layer LayerUtils PixelBlitter)
-   (top.kzre.krro.canvas.vector
-     AntiAlias
-     ArcLengthSampleWidthFunc
-     Cap
-     FillRule
-     Join
+    (java.util Collection UUID)
+    (java.util.function DoubleUnaryOperator)
+    (top.kzre.curve.bezier2d Bezier2D)
+    (top.kzre.krro.canvas.core.layer LayerUtils PixelBlitter)
+    (top.kzre.krro.canvas.vector
+      AntiAlias
+      ArcLengthSampleWidthFunc
+      Cap
+      FillRule
+      Join
       RenderCurveTaskBuilder)
-   (top.kzre.krro.util.tile TiledCanvas)))
+    (top.kzre.krro.util.math KMath)
+    (top.kzre.krro.util.tile TiledCanvas)))
 
 (defn make-vector-layer
   "创建矢量图层数据结构。"
@@ -112,21 +113,26 @@
    - canvas-w, canvas-h: 画布尺寸
    - dirty-tiles: Set<Long> 脏瓦片
    - aa-mode: 关键字 :disabled, :analytic, :ssaa
-   - curves-config: 向量，每个元素为 [curve, opts-map]
+   - opts: 向量，每个元素为 [curve, opts-map]
    opts-map 支持：
      :flatness 展平度
      :width-tolerance 宽度容差
      :fill {:color [r g b a] :rule :even-odd/:non-zero}
      :stroke {:color [r g b a] :width 1.0 :cap :butt/:round/:square :join :miter/:round/:bevel
               :width-samples, :arc-params 或 :width-fn 函数}"
-  [canvas canvas-w canvas-h dirty-tiles aa-mode & curves-config]
+  [canvas canvas-w canvas-h dirty-tiles aa-mode
+   {:keys [scale-x scale-y]
+    :or {scale-x 1.0
+         scale-y 1.0}}
+   & curve-configs]
   (let [builder (RenderCurveTaskBuilder/create)]
     (doto (.config builder)
       (.canvas canvas)
       (.size canvas-w canvas-h)
       (.dirtyTiles dirty-tiles)
+      (.scale scale-x scale-y)
       (.aa (keyword->antialias aa-mode)))
-    (doseq [[curve opts] curves-config]
+    (doseq [[curve opts] curve-configs]
       (let [curve-config (.curve builder curve)]
         (when-let [flatness (:flatness opts)]
           (.flatness curve-config (float flatness)))
@@ -168,6 +174,7 @@
           task (apply build-render-task canvas canvas-w canvas-h
                       (or dirty-tiles (LayerUtils/canvasTiles (.getTileSize canvas) (int canvas-w) (int canvas-h)))
                       antialias
+                      {}
                       curves-config)]
       (.run task)
       nil)))
@@ -179,10 +186,19 @@
     {:id :vector/render}
     (p/p :render-vector-layer
          (let [tile-size (.getTileSize dest-canvas)
-               antialias (:antialias layer)
+               antialias (:antialias layer true)
                flatness  (:flatness layer 0.25)
                tmp-canvas (TiledCanvas. tile-size)
-               curves-config (for [path-id (:path-order layer)
+               ;; 图层坐标到视口坐标的缩放，用来控制路径Stroke 的扩张
+               transform (:transform layer)
+               scale-x (if transform
+                       (KMath/mat2dScaleX transform)
+                       1.0)
+               scale-y (if transform
+                        (KMath/mat2dScaleY transform)
+                        1.0)
+
+               curves-configs (for [path-id (:path-order layer)
                                    :let [path (get (:paths-map layer) path-id)
                                          curve (case (:path-type path)
                                                  :bezier (bezier/edn->curve (:bezier-curve path))
@@ -190,19 +206,22 @@
                                                                 (.getBezierCurve cr-obj))
                                                  nil)
                                          style (:style path)
-                                         transformed-curve (if-let [transform (:transform layer)]
-                                                             (Bezier2D/transform curve (float-array transform))
-                                                             curve)
+                                         transformed-curve (if (KMath/mat2dIsIdentity transform)
+                                                             curve
+                                                             (Bezier2D/transform curve (float-array transform)))
                                          opts (cond-> {:flatness flatness}
                                                       (and style (:fill style)) (assoc :fill (:fill style))
                                                       (and style (:stroke style)) (assoc :stroke (:stroke style)))]
                                    :when curve]
                                [transformed-curve opts])
+
                task (apply build-render-task
                            tmp-canvas canvas-w canvas-h
                            (or dirty-tiles (LayerUtils/canvasTiles tile-size (int canvas-w) (int canvas-h)))
                            antialias
-                           curves-config)]
+                           {:scale-x scale-x
+                            :scale-y scale-y}
+                           curves-configs)]
            (.run task)
            (let [blend-mode (lu/blend-mode-str (:blend-mode layer) :normal)
                  opacity (float (get layer :opacity 1.0))

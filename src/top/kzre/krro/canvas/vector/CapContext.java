@@ -7,13 +7,13 @@ public final class CapContext {
     private final double rightX, rightY;   // 右侧边缘点（沿切线方向的法线右侧）
     private final double leftX, leftY;     // 左侧边缘点（沿切线方向的法线左侧）
     private final boolean isStart;         // true 表示起点，false 表示终点
-
+    private final RenderContext renderContext;
     public CapContext(double centerX, double centerY,
                       double tangentX, double tangentY,
                       double halfWidth,
                       double rightX, double rightY,
                       double leftX, double leftY,
-                      boolean isStart) {
+                      boolean isStart, RenderContext renderContext) {
         this.centerX = centerX;
         this.centerY = centerY;
         this.tangentX = tangentX;
@@ -24,6 +24,7 @@ public final class CapContext {
         this.leftX = leftX;
         this.leftY = leftY;
         this.isStart = isStart;
+        this.renderContext = renderContext;
     }
 
     // --- getters ---
@@ -37,4 +38,8 @@ public final class CapContext {
     public double getLeftX() { return leftX; }
     public double getLeftY() { return leftY; }
     public boolean isStart() { return isStart; }
+
+    public RenderContext getRenderContext() {
+        return renderContext;
+    }
 }

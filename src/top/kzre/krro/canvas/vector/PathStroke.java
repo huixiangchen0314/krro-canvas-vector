@@ -51,7 +51,7 @@ public final class PathStroke extends PathRenderer {
         List<Vertex> vertices = path.getVertices();
         if (vertices.size() < 2) return null;
 
-        return generateOutline(vertices);
+        return generateOutline(vertices, context);
 
     }
 
@@ -65,9 +65,11 @@ public final class PathStroke extends PathRenderer {
      * @param vertices 路径顶点列表（包含坐标和宽度信息）
      * @return 闭合的描边轮廓多边形
      */
-    private Polygon generateOutline(List<Vertex> vertices) {
+    private Polygon generateOutline(List<Vertex> vertices, RenderContext context) {
         int n = vertices.size();
         if (n < 2) return null;
+        double scaleX = context.getScaleX();
+        double scaleY = context.getScaleY();
 
         // 处理两个顶点的情况：直接生成矩形
         if (n == 2) {
@@ -81,10 +83,14 @@ public final class PathStroke extends PathRenderer {
             double ny = dx / len;
             double hw0 = v0.getWidth() * 0.5;
             double hw1 = v1.getWidth() * 0.5;
-            double x1 = v0.getX() + nx * hw0, y1 = v0.getY() + ny * hw0;
-            double x2 = v1.getX() + nx * hw1, y2 = v1.getY() + ny * hw1;
-            double x3 = v1.getX() - nx * hw1, y3 = v1.getY() - ny * hw1;
-            double x4 = v0.getX() - nx * hw0, y4 = v0.getY() - ny * hw0;
+            double x1 = v0.getX() + nx * hw0 * scaleX;
+            double y1 = v0.getY() + ny * hw0 * scaleY;
+            double x2 = v1.getX() + nx * hw1 * scaleX;
+            double y2 = v1.getY() + ny * hw1 * scaleY;
+            double x3 = v1.getX() - nx * hw1 * scaleX;
+            double y3 = v1.getY() - ny * hw1 * scaleY;
+            double x4 = v0.getX() - nx * hw0 * scaleX;
+            double y4 = v0.getY() - ny * hw0 * scaleY;
             return new Polygon(new double[]{x1, y1, x2, y2, x3, y3, x4, y4});
         }
 
@@ -102,14 +108,14 @@ public final class PathStroke extends PathRenderer {
         double nx0 = (len0 < 1e-12) ? 0 : -dy0 / len0;
         double ny0 = (len0 < 1e-12) ? 1 : dx0 / len0;
         double hw0 = v0.getWidth() * 0.5;
-        double left0X = v0.getX() + nx0 * hw0;
-        double left0Y = v0.getY() + ny0 * hw0;
-        double right0X = v0.getX() - nx0 * hw0;
-        double right0Y = v0.getY() - ny0 * hw0;
+        double left0X = v0.getX() + nx0 * hw0 * scaleX;
+        double left0Y = v0.getY() + ny0 * hw0 * scaleY;
+        double right0X = v0.getX() - nx0 * hw0 * scaleX;
+        double right0Y = v0.getY() - ny0 * hw0 * scaleY;
 
         // 起点 Cap
         cap.addCap(new CapContext(v0.getX(), v0.getY(), dx0/len0, dy0/len0, hw0,
-                right0X, right0Y, left0X, left0Y, true), poly);
+                right0X, right0Y, left0X, left0Y, true, context), poly);
 
         poly.add(left0X, left0Y);
 
@@ -130,22 +136,50 @@ public final class PathStroke extends PathRenderer {
             double nx = (len < 1e-12) ? 0 : -dy / len;
             double ny = (len < 1e-12) ? 1 : dx / len;
             double hw = vCurr.getWidth() * 0.5;
-            double lx = vCurr.getX() + nx * hw;
-            double ly = vCurr.getY() + ny * hw;
-            double rx = vCurr.getX() - nx * hw;
-            double ry = vCurr.getY() - ny * hw;
+            double lx = vCurr.getX() + nx * hw * scaleX;
+            double ly = vCurr.getY() + ny * hw * scaleY;
+            double rx = vCurr.getX() - nx * hw * scaleX;
+            double ry = vCurr.getY() - ny * hw * scaleY;
+
+
+            double x1 = vPrev.getX() - vCurr.getX();
+            double y1 = vPrev.getY() - vCurr.getY();
+            double x2 = vNext.getX() - vCurr.getX();
+            double y2 = vNext.getY() - vCurr.getY();
+            // 当前截面的法向
+            double normalX = (x1 + x2) / 2.0;
+            double normalY = (y1 + y2) / 2.0;
+            double dot  = x1 * x2 + y1 * y2;
+            boolean normalOutSide = dot < 0;
+            // 当前截面切向
+            double x3 = prevLeftX - vCurr.getX();
+            double y3 = prevLeftY - vCurr.getY();
+            double x4 = lx - vCurr.getX();
+            double y4 = ly - vCurr.getY();
+            double dot2 = (x3 + x4) * normalX + (y3 + y4) * normalY;
+            boolean tangentOutSide = (dot2 > 0) == normalOutSide;
 
             // ---- 正向 Join（左侧） ----
             // 连接前一个左边缘 (prevLeft) 和当前左边缘 (lx, ly)，中心为当前顶点
-            JoinContext leftJoin = new JoinContext(prevLeftX, prevLeftY, lx, ly,
-                    vCurr.getX(), vCurr.getY(), hw, miterLimit);
+            JoinContext leftJoin = new JoinContext(
+                    prevLeftX, prevLeftY,
+                    lx, ly,
+                    vCurr.getX(), vCurr.getY(),
+                    hw, miterLimit,
+                    normalOutSide ? normalX : - normalX,
+                    normalOutSide ? normalY : - normalY,
+                    tangentOutSide, context);
             join.addJoin(leftJoin, poly);
             poly.add(lx, ly);
 
             // ---- 反向 Join（右侧） ----
             // 存储顺序：当前右边缘 -> 前一个右边缘，便于反向遍历
-            JoinContext rightJoin = new JoinContext(rx, ry, prevRightX, prevRightY,
-                    vCurr.getX(), vCurr.getY(), hw, miterLimit);
+            JoinContext rightJoin = new JoinContext(rx, ry,
+                    prevRightX, prevRightY,
+                    vCurr.getX(), vCurr.getY(), hw, miterLimit,
+                    normalOutSide ? -normalX : normalX,
+                    normalOutSide ? -normalY : normalY,
+                    !tangentOutSide, context);
             reverseJoins.add(rightJoin);
 
             // 更新前一个顶点的数据为当前顶点
@@ -158,6 +192,7 @@ public final class PathStroke extends PathRenderer {
         // ---- 最后一个顶点 ----
         Vertex last = vertices.get(n - 1);
         Vertex prevLast = vertices.get(n - 2);
+        Vertex secondPrevLast = vertices.get(n - 2);
         // 使用最后一段的方向作为切线（反向）
         double lxLast = last.getX() - prevLast.getX();
         double lyLast = last.getY() - prevLast.getY();
@@ -167,13 +202,34 @@ public final class PathStroke extends PathRenderer {
         double nyLast = lxLast / lenLast;
         double hwLast = last.getWidth() * 0.5;
         double leftLastX = prevLeftX, leftLastY = prevLeftY;
-        double rightLastX = last.getX() - nxLast * hwLast;
-        double rightLastY = last.getY() - nyLast * hwLast;
+        double rightLastX = last.getX() - nxLast * hwLast * scaleX;
+        double rightLastY = last.getY() - nyLast * hwLast * scaleY;
 
+        double x1 = prevLast.getX() - last.getX();
+        double y1 = prevLast.getY() - last.getY();
+        double x2 = secondPrevLast.getX() - prevLast.getX();
+        double y2 = secondPrevLast.getY() - prevLast.getY();
+        // 当前截面的法向
+        double normalX = (x1 + x2) / 2;
+        double normalY = (y1 + y2) / 2;
+        double dot  =x1 * x2 + y1 * y2;
+        boolean normalOutSide = dot < 0;
+        // 当前截面切向
+        double x3 = prevRightX - last.getX();
+        double y3 = prevRightY - last.getY();
+        double x4 = rightLastX - last.getX();
+        double y4 = rightLastY - last.getY();
+        double dot2 = (x3 + x4) * normalX + (y3 + y4) * normalY;
+        boolean tangentOutSide = (dot2 > 0) == normalOutSide;
         // 最后一个反向 Join
-        JoinContext lastRightJoin = new JoinContext(rightLastX, rightLastY,
+        JoinContext lastRightJoin = new JoinContext(
+                rightLastX, rightLastY,
                 prevRightX, prevRightY,
-                last.getX(), last.getY(), hwLast, miterLimit);
+                last.getX(), last.getY(),
+                hwLast, miterLimit,
+                normalOutSide ? normalX : - normalX,
+                normalOutSide ? normalY : - normalY,
+                tangentOutSide, context);
         reverseJoins.add(lastRightJoin);
 
         // 终点 Cap
@@ -182,7 +238,7 @@ public final class PathStroke extends PathRenderer {
                 -lxLast, -lyLast,
                 hwLast,
                 rightLastX, rightLastY,
-                leftLastX, leftLastY, false), poly);
+                leftLastX, leftLastY, false, context), poly);
 
         // ---- 反向输出右侧边 ----
         poly.add(rightLastX, rightLastY);
