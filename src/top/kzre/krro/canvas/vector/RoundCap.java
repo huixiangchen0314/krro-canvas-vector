@@ -11,9 +11,6 @@ public final class RoundCap implements CapStrategy {
 
     @Override
     public void addCap(CapContext ctx, DoubleList builder) {
-        if (ctx != null) {
-            return;
-        }
         double prevX = ctx.getPrevX();
         double prevY = ctx.getPrevY();
         double currX = ctx.getCurrX();
@@ -25,20 +22,40 @@ public final class RoundCap implements CapStrategy {
         double scaleX = rc.getScaleX();
         double scaleY = rc.getScaleY();
 
-        double angle1 = Math.atan2(prevY - cy, prevX - cx);
-        double angle2 = Math.atan2(currY - cy, currX - cx);
-        double delta = angle2 - angle1;
-        if (delta > Math.PI) delta -= 2 * Math.PI;
-        else if (delta < -Math.PI) delta += 2 * Math.PI;
+        double prevAngle = Math.atan2(prevY - cy, prevX - cx);
 
-        // 如果角度差太小，不生成圆弧
-        if (Math.abs(delta) < 1e-6) {
-            return;
+        double dirAngle = Math.atan2(ctx.getDirY(), ctx.getDirX());
+
+        // 计算从 prev 到 dir 的短路径差
+        double diff1 = dirAngle - prevAngle;
+        if (diff1 > Math.PI) diff1 -= 2 * Math.PI;
+        else if (diff1 < -Math.PI) diff1 += 2 * Math.PI;
+
+        int halfSteps = steps / 2;
+
+        // 生成中间顶点（不包含起点和终点）
+        for (int i = 1; i < halfSteps - 1; i++) {
+            double t = (double) i / halfSteps;
+            double a = prevAngle + diff1 * t;
+            builder.add(cx + Math.cos(a) * r * scaleX,
+                    cy + Math.sin(a) * r * scaleY);
         }
 
-        for (int i = 1; i < steps; i++) {
-            double t = (double) i / steps;
-            double a = angle1 + delta * t;
+        builder.add(cx + Math.cos(dirAngle) * r * scaleX,
+                cy + Math.sin(dirAngle) * r * scaleY);
+
+        double currAngle = Math.atan2(currY - cy, currX - cx);
+
+        // 计算从 prev 到 dir 的短路径差
+        double diff2 = currAngle - dirAngle;
+        if (diff2 > Math.PI) diff2 -= 2 * Math.PI;
+        else if (diff2 < -Math.PI) diff2 += 2 * Math.PI;
+
+
+        // 生成中间顶点（不包含起点和终点）
+        for (int i = 1; i < halfSteps - 1; i++) {
+            double t = (double) i / halfSteps;
+            double a = dirAngle + diff2 * t;
             builder.add(cx + Math.cos(a) * r * scaleX,
                     cy + Math.sin(a) * r * scaleY);
         }

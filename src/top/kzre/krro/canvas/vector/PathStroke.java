@@ -140,8 +140,9 @@ public final class PathStroke extends PathRenderer {
                     miterLimit,
                     context
             );
-            join.addJoin(leftJoin, poly);
+
             poly.add(prevEndLeftX, prevEndLeftY);
+            join.addJoin(leftJoin, poly);
             poly.add(currStartLeftX, currStartLeftY);
 
             // ---- 反向 Join（右侧） ----
@@ -170,8 +171,8 @@ public final class PathStroke extends PathRenderer {
         double dirX = lastX - secondLast.getX();
         double dirY = lastY - secondLast.getY();
         double len = Math.hypot(dirX, dirY);
-        double normX = -dirY / len;
-        double normY = dirX / len;
+        double normalX = -dirY / len;
+        double normalY = dirX / len;
         double secondLastX = secondLast.getX();
         double secondLastY = secondLast.getY();
         double secondLastHalfWidth = secondLast.getWidth() * 0.5;
@@ -182,32 +183,40 @@ public final class PathStroke extends PathRenderer {
         double prevEndRightX = secondLastX - prevNormalX * secondLastHalfWidth * scaleX;
         double prevEndRightY = secondLastY - prevNormalY * secondLastHalfWidth * scaleY;
         // 计算 vCurr-start 的扩张点
-        double currStartLeftX = secondLastX + normX + secondLastHalfWidth * scaleX;
-        double currStartLeftY = secondLastY + normY + secondLastHalfWidth * scaleY;
-        double currStartRightX = secondLastX - normX * secondLastHalfWidth * scaleX;
-        double currStartRightY = secondLastY - normY * secondLastHalfWidth * scaleY;
+        double currStartLeftX = secondLastX + normalX + secondLastHalfWidth * scaleX;
+        double currStartLeftY = secondLastY + normalY + secondLastHalfWidth * scaleY;
+        double currStartRightX = secondLastX - normalX * secondLastHalfWidth * scaleX;
+        double currStartRightY = secondLastY - normalY * secondLastHalfWidth * scaleY;
 
-        JoinContext lastLeftJoin = new JoinContext(
+        poly.add(prevEndLeftX, prevEndLeftY);
+        join.addJoin(new JoinContext(
                 secondLast,
                 prevEndLeftX, prevEndLeftY,
                 currStartLeftX, currStartLeftY,
                 miterLimit,
                 context
-        );
-        join.addJoin(lastLeftJoin, poly);
-        double lastHalfWidth = last.getWidth() * 0.5;
-        double lastLeftX = lastX + normX * lastHalfWidth * scaleX;
-        double lastLeftY = lastY + normY * lastHalfWidth * scaleY;
-        double lastRightX = lastX - normX * lastHalfWidth * scaleX;
-        double lastRightY = lastY - normY * lastHalfWidth * scaleY;
-
-        poly.add(lastLeftX, lastLeftY);
-        poly.add(prevEndLeftX, prevEndLeftY);
+        ), poly);
         poly.add(currStartLeftX, currStartLeftY);
 
-        poly.add(lastLeftX, lastLeftY);
+        JoinContext lastRightJoin = new JoinContext(
+                secondLast,
+                currStartRightX, currStartRightY,
+                prevEndRightX, prevEndRightY,
+                miterLimit,
+                context
+        );
+        reverseJoins.add(lastRightJoin);
+
+        double lastHalfWidth = last.getWidth() * 0.5;
+        double lastLeftX = lastX + normalX * lastHalfWidth * scaleX;
+        double lastLeftY = lastY + normalY * lastHalfWidth * scaleY;
+        double lastRightX = lastX - normalX * lastHalfWidth * scaleX;
+        double lastRightY = lastY - normalY * lastHalfWidth * scaleY;
+
+
 
         // ---- 终点 Cap ----
+        poly.add(lastLeftX, lastLeftY);
         cap.addCap(new CapContext(
                 last,
                 lastLeftX, lastLeftY,
@@ -215,25 +224,16 @@ public final class PathStroke extends PathRenderer {
                 dirX, dirY,
                 context
         ), poly);
-
         poly.add(lastRightX, lastRightY);
 
-        JoinContext lastRightJoin = new JoinContext(
-                secondLast, currStartRightX, currStartRightY,
-                prevEndRightX, prevEndRightY,
-                miterLimit,
-                context
-        );
-        reverseJoins.add(lastRightJoin);
 
         // ---- 反向输出右侧边 ----
-        poly.add(lastRightX, lastRightY);
         for (int i = reverseJoins.size() - 1; i >= 0; i--) {
             JoinContext jc = reverseJoins.get(i);
             // jc 的顺序是 (currRight, prevRight)，当前轮廓的最后一个点是 currRight，
             // 直接调用 join.addJoin 并添加 prevRight 即可完成连接
-            join.addJoin(jc, poly);
             poly.add(jc.getPrevX(), jc.getPrevY());
+            join.addJoin(jc, poly);
             poly.add(jc.getCurrX(), jc.getCurrY());
         }
 
