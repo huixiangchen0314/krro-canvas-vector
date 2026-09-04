@@ -1,45 +1,47 @@
 package top.kzre.krro.canvas.vector;
 
 public final class CapContext {
-    private final double centerX, centerY;           // 端点中心点坐标
-    private final double tangentX, tangentY; // 单位切线方向（指向路径方向）
-    private final double halfWidth;        // 半宽（宽度的一半）
-    private final double rightX, rightY;   // 右侧边缘点（沿切线方向的法线右侧）
-    private final double leftX, leftY;     // 左侧边缘点（沿切线方向的法线左侧）
-    private final boolean isStart;         // true 表示起点，false 表示终点
+    private final Vertex vertex;
+    private final double prevX, prevY;
+    private final double currX, currY;
+    private final double dirX, dirY;
+
     private final RenderContext renderContext;
-    public CapContext(double centerX, double centerY,
-                      double tangentX, double tangentY,
-                      double halfWidth,
-                      double rightX, double rightY,
-                      double leftX, double leftY,
-                      boolean isStart, RenderContext renderContext) {
-        this.centerX = centerX;
-        this.centerY = centerY;
-        this.tangentX = tangentX;
-        this.tangentY = tangentY;
-        this.halfWidth = halfWidth;
-        this.rightX = rightX;
-        this.rightY = rightY;
-        this.leftX = leftX;
-        this.leftY = leftY;
-        this.isStart = isStart;
+    public CapContext(
+            Vertex vertex,
+            double prevX, double prevY,
+            double currX, double currY,
+            double dirX, double dirY,
+            RenderContext renderContext) {
+
+        this.currX = currX;
+        this.currY = currY;
+        this.vertex = vertex;
+        this.prevX = prevX;
+        this.prevY = prevY;
+        this.dirX = dirX;
+        this.dirY = dirY;
         this.renderContext = renderContext;
     }
 
-    // --- getters ---
-    public double getCenterX() { return centerX; }
-    public double getCenterY() { return centerY; }
-    public double getTangentX() { return tangentX; }
-    public double getTangentY() { return tangentY; }
-    public double getHalfWidth() { return halfWidth; }
-    public double getRightX() { return rightX; }
-    public double getRightY() { return rightY; }
-    public double getLeftX() { return leftX; }
-    public double getLeftY() { return leftY; }
-    public boolean isStart() { return isStart; }
+    public double getCurrX() { return currX; }
+    public double getCurrY() { return currY; }
+    public double getPrevX() { return prevX; }
+    public double getPrevY() { return prevY; }
 
     public RenderContext getRenderContext() {
         return renderContext;
+    }
+
+    public Vertex getVertex() {
+        return vertex;
+    }
+
+    public double getDirX() {
+        return dirX;
+    }
+
+    public double getDirY() {
+        return dirY;
     }
 }

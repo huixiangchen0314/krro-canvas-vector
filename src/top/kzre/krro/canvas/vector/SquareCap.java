@@ -24,17 +24,19 @@ public final class SquareCap implements CapStrategy {
 
     @Override
     public void addCap(CapContext context, DoubleList builder) {
-        double half = context.getHalfWidth();
-        double tx = context.getTangentX();
-        double ty = context.getTangentY();
+        Vertex vertex = context.getVertex();
+        double tx = context.getDirX();
+        double ty = context.getDirY();
+        double half = vertex.getWidth() * 0.5;
+
 
         // 右侧外角：右侧边缘沿切线方向延伸 half 距离
-        double extRightX = context.getRightX() - tx * half;
-        double extRightY = context.getRightY() - ty * half;
+        double extRightX = context.getCurrX() - tx * half;
+        double extRightY = context.getCurrY() - ty * half;
 
         // 左侧外角：左侧边缘沿切线方向延伸 half 距离
-        double extLeftX = context.getLeftX() - tx * half;
-        double extLeftY = context.getLeftY() - ty * half;
+        double extLeftX = context.getPrevX() - tx * half;
+        double extLeftY = context.getPrevY() - ty * half;
 
         // 先添加右侧外角，再添加左侧外角（顺序与现有轮廓生成逻辑一致）
         builder.add(extRightX, extRightY);

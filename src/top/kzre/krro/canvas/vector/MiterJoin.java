@@ -31,9 +31,10 @@ public final class MiterJoin extends AbstractJoinStrategy {
         double prevY = context.getPrevY();
         double currX = context.getCurrX();
         double currY = context.getCurrY();
-        double vertexX = context.getCenterX();
-        double vertexY = context.getCenterY();
-        double halfWidth = context.getHalfWidth();
+        Vertex vertex = context.getVertex();
+        double vertexX = vertex.getX();
+        double vertexY = vertex.getY();
+        double halfWidth = vertex.getWidth() * 0.5;
         double miterLimit = context.getMiterLimit();
 
         // 计算两条边缘的方向向量（从顶点到边缘点）

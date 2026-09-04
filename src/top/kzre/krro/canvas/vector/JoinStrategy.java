@@ -30,5 +30,5 @@ public interface JoinStrategy {
      */
     void addJoin(JoinContext context, DoubleList builder);
 
-    boolean shouldJoin(JoinContext context);
+
 }

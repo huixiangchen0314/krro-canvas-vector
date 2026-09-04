@@ -49,212 +49,254 @@ public final class PathStroke extends PathRenderer {
     @Override
     public Polygon render(Path path, RenderContext context) {
         List<Vertex> vertices = path.getVertices();
-        if (vertices.size() < 2) return null;
-
-        return generateOutline(vertices, context);
-
-    }
-
-    /**
-     * 根据顶点列表生成描边轮廓多边形。
-     * <p>
-     * 使用滑动窗口算法，一次遍历同时生成正向（左侧）和反向（右侧）的轮廓边。
-     * 正向边直接添加到多边形，反向边以 {@link JoinContext} 形式存储，最后反向输出。
-     * </p>
-     *
-     * @param vertices 路径顶点列表（包含坐标和宽度信息）
-     * @return 闭合的描边轮廓多边形
-     */
-    private Polygon generateOutline(List<Vertex> vertices, RenderContext context) {
         int n = vertices.size();
         if (n < 2) return null;
-        double scaleX = context.getScaleX();
-        double scaleY = context.getScaleY();
 
         // 处理两个顶点的情况：直接生成矩形
         if (n == 2) {
             Vertex v0 = vertices.get(0);
             Vertex v1 = vertices.get(1);
-            double dx = v1.getX() - v0.getX();
-            double dy = v1.getY() - v0.getY();
-            double len = Math.hypot(dx, dy);
-            if (len < 1e-12) return new Polygon(new double[0]);
-            double nx = -dy / len;
-            double ny = dx / len;
-            double hw0 = v0.getWidth() * 0.5;
-            double hw1 = v1.getWidth() * 0.5;
-            double x1 = v0.getX() + nx * hw0 * scaleX;
-            double y1 = v0.getY() + ny * hw0 * scaleY;
-            double x2 = v1.getX() + nx * hw1 * scaleX;
-            double y2 = v1.getY() + ny * hw1 * scaleY;
-            double x3 = v1.getX() - nx * hw1 * scaleX;
-            double y3 = v1.getY() - ny * hw1 * scaleY;
-            double x4 = v0.getX() - nx * hw0 * scaleX;
-            double y4 = v0.getY() - ny * hw0 * scaleY;
-            return new Polygon(new double[]{x1, y1, x2, y2, x3, y3, x4, y4});
+            return genRectPolygon(v0, v1, context);
         }
 
+        double scaleX = context.getScaleX();
+        double scaleY = context.getScaleY();
         DoubleList poly = new DoubleList(n * 8 + 16);
         List<JoinContext> reverseJoins = new ArrayList<>(n);
 
         // ---- 第一个顶点 ----
         Vertex v0 = vertices.get(0);
         Vertex v1 = vertices.get(1);
-        // 使用第一个顶点的法线（从 v0 到 v1 方向）
-        double dx0 = v1.getX() - v0.getX();
-        double dy0 = v1.getY() - v0.getY();
-        double len0 = Math.hypot(dx0, dy0);
-        // 如果路径长度为零，使用默认法线 (0, 1)
-        double nx0 = (len0 < 1e-12) ? 0 : -dy0 / len0;
-        double ny0 = (len0 < 1e-12) ? 1 : dx0 / len0;
-        double hw0 = v0.getWidth() * 0.5;
-        double left0X = v0.getX() + nx0 * hw0 * scaleX;
-        double left0Y = v0.getY() + ny0 * hw0 * scaleY;
-        double right0X = v0.getX() - nx0 * hw0 * scaleX;
-        double right0Y = v0.getY() - ny0 * hw0 * scaleY;
+
+        // 线段方向
+        double dirX0 = v1.getX() - v0.getX();
+        double dirY0 = v1.getY() - v0.getY();
+        double len0 = Math.hypot(dirX0, dirY0);
+
+        // 线段法向
+        double normalX0 = -dirY0 / len0;
+        double normalY0 = dirX0 / len0;
+        double halfWidth0 = v0.getWidth() * 0.5;
+        // 沿着法向扩张 线段两点
+        double leftX0 = v0.getX() + normalX0 * halfWidth0 * scaleX;
+        double leftY0 = v0.getY() + normalY0 * halfWidth0 * scaleY;
+        double rightX0 = v0.getX() - normalX0 * halfWidth0 * scaleX;
+        double rightY0 = v0.getY() - normalY0 * halfWidth0 * scaleY;
 
         // 起点 Cap
-        cap.addCap(new CapContext(v0.getX(), v0.getY(), dx0/len0, dy0/len0, hw0,
-                right0X, right0Y, left0X, left0Y, true, context), poly);
+        cap.addCap(new CapContext(
+                v0,
+                rightX0, rightY0,
+                leftX0, leftY0,
+                -dirX0, -dirY0,
+                context
+        ), poly);
 
-        poly.add(left0X, left0Y);
-
-        // 初始化前一个顶点的左、右边缘（顶点0）
-        double prevLeftX = left0X, prevLeftY = left0Y;
-        double prevRightX = right0X, prevRightY = right0Y;
-
-        // ---- 滑动窗口循环：i 从 2 到 n-1 (i 是 next 的索引) ----
-        for (int i = 2; i < n; i++) {
-            Vertex vPrev = vertices.get(i - 2);
-            Vertex vCurr = vertices.get(i - 1);
-            Vertex vNext = vertices.get(i);
-
-            // 计算 current 顶点的法线（使用 prev 和 next 的方向差）
-            double dx = vNext.getX() - vPrev.getX();
-            double dy = vNext.getY() - vPrev.getY();
-            double len = Math.hypot(dx, dy);
-            double nx = (len < 1e-12) ? 0 : -dy / len;
-            double ny = (len < 1e-12) ? 1 : dx / len;
-            double hw = vCurr.getWidth() * 0.5;
-            double lx = vCurr.getX() + nx * hw * scaleX;
-            double ly = vCurr.getY() + ny * hw * scaleY;
-            double rx = vCurr.getX() - nx * hw * scaleX;
-            double ry = vCurr.getY() - ny * hw * scaleY;
+        // 点1
+        poly.add(leftX0, leftY0);
 
 
-            double x1 = vPrev.getX() - vCurr.getX();
-            double y1 = vPrev.getY() - vCurr.getY();
-            double x2 = vNext.getX() - vCurr.getX();
-            double y2 = vNext.getY() - vCurr.getY();
-            // 当前截面的法向
-            double normalX = (x1 + x2) / 2.0;
-            double normalY = (y1 + y2) / 2.0;
-            double dot  = x1 * x2 + y1 * y2;
-            boolean normalOutSide = dot < 0;
-            // 当前截面切向
-            double x3 = prevLeftX - vCurr.getX();
-            double y3 = prevLeftY - vCurr.getY();
-            double x4 = lx - vCurr.getX();
-            double y4 = ly - vCurr.getY();
-            double dot2 = (x3 + x4) * normalX + (y3 + y4) * normalY;
-            boolean tangentOutSide = (dot2 > 0) == normalOutSide;
+        double prevNormalX = normalX0;
+        double prevNormalY = normalY0;
 
-            // ---- 正向 Join（左侧） ----
+        // ---- 滑动窗口：(prev, curr, next) ----
+        // 每个循环计算一条两条线段并补充.
+        // 其中 prev 结束点 和 next 的起始点 一共 4个扩张点有上次循环计算
+        // 滑动窗口复用了 (prev, curr) 这条线段法向.本次需要计算 (curr, next) 的法向
+        for (int i = 1; i < n - 1; i++) {
+            Vertex vCurr = vertices.get(i);
+            Vertex vNext = vertices.get(i + 1);
+
+            // 指向外侧的法向
+            // (curr, next) 线段法向的计算
+            double dirX = vNext.getX() - vCurr.getX();
+            double dirY = vNext.getY() - vCurr.getY();
+            double len = Math.hypot(dirX, dirY);
+            double normalX = -dirY / len;
+            double normalY = dirX / len;
+
+
+
+            double currX = vCurr.getX();
+            double currY = vCurr.getY();
+            double currHalfWidth = vCurr.getWidth() * 0.5;
+            // 计算 vPrev-end 的扩张点
+            double prevEndLeftX = currX + prevNormalX * currHalfWidth * scaleX;
+            double prevEndLeftY = currY + prevNormalY * currHalfWidth * scaleY;
+            double prevEndRightX = currX - prevNormalX * currHalfWidth * scaleX;
+            double prevEndRightY = currY - prevNormalY * currHalfWidth * scaleY;
+            // 计算 vCurr-start 的扩张点
+            double currStartLeftX = currX + normalX * currHalfWidth * scaleX;
+            double currStartLeftY = currY + normalY * currHalfWidth * scaleY;
+            double currStartRightX = currX - normalX * currHalfWidth * scaleX;
+            double currStartRightY = currY - normalY * currHalfWidth * scaleY;
+
+
             // 连接前一个左边缘 (prevLeft) 和当前左边缘 (lx, ly)，中心为当前顶点
             JoinContext leftJoin = new JoinContext(
-                    prevLeftX, prevLeftY,
-                    lx, ly,
-                    vCurr.getX(), vCurr.getY(),
-                    hw, miterLimit,
-                    normalOutSide ? normalX : - normalX,
-                    normalOutSide ? normalY : - normalY,
-                    tangentOutSide, context);
+                    vCurr,
+                    prevEndLeftX, prevEndLeftY,
+                    currStartLeftX, currStartLeftY,
+                    miterLimit,
+                    context
+            );
             join.addJoin(leftJoin, poly);
-            poly.add(lx, ly);
+            poly.add(prevEndLeftX, prevEndLeftY);
+            poly.add(currStartLeftX, currStartLeftY);
 
             // ---- 反向 Join（右侧） ----
+
             // 存储顺序：当前右边缘 -> 前一个右边缘，便于反向遍历
-            JoinContext rightJoin = new JoinContext(rx, ry,
-                    prevRightX, prevRightY,
-                    vCurr.getX(), vCurr.getY(), hw, miterLimit,
-                    normalOutSide ? -normalX : normalX,
-                    normalOutSide ? -normalY : normalY,
-                    !tangentOutSide, context);
+            JoinContext rightJoin = new JoinContext(
+                    vCurr,
+                    currStartRightX, currStartRightY,
+                    prevEndRightX, prevEndRightY,
+                    miterLimit,
+                    context);
             reverseJoins.add(rightJoin);
 
-            // 更新前一个顶点的数据为当前顶点
-            prevLeftX = lx;
-            prevLeftY = ly;
-            prevRightX = rx;
-            prevRightY = ry;
+            // 更新前一个线段的法向
+            prevNormalX = normalX;
+            prevNormalY = normalY;
         }
 
         // ---- 最后一个顶点 ----
-        Vertex last = vertices.get(n - 1);
-        Vertex prevLast = vertices.get(n - 2);
-        Vertex secondPrevLast = vertices.get(n - 2);
-        // 使用最后一段的方向作为切线（反向）
-        double lxLast = last.getX() - prevLast.getX();
-        double lyLast = last.getY() - prevLast.getY();
-        double lenLast = Math.hypot(lxLast, lyLast);
-        if (lenLast < 1e-12) { lxLast = 0; lyLast = 1; } // fallback
-        double nxLast = -lyLast / lenLast;
-        double nyLast = lxLast / lenLast;
-        double hwLast = last.getWidth() * 0.5;
-        double leftLastX = prevLeftX, leftLastY = prevLeftY;
-        double rightLastX = last.getX() - nxLast * hwLast * scaleX;
-        double rightLastY = last.getY() - nyLast * hwLast * scaleY;
 
-        double x1 = prevLast.getX() - last.getX();
-        double y1 = prevLast.getY() - last.getY();
-        double x2 = secondPrevLast.getX() - prevLast.getX();
-        double y2 = secondPrevLast.getY() - prevLast.getY();
-        // 当前截面的法向
-        double normalX = (x1 + x2) / 2;
-        double normalY = (y1 + y2) / 2;
-        double dot  =x1 * x2 + y1 * y2;
-        boolean normalOutSide = dot < 0;
-        // 当前截面切向
-        double x3 = prevRightX - last.getX();
-        double y3 = prevRightY - last.getY();
-        double x4 = rightLastX - last.getX();
-        double y4 = rightLastY - last.getY();
-        double dot2 = (x3 + x4) * normalX + (y3 + y4) * normalY;
-        boolean tangentOutSide = (dot2 > 0) == normalOutSide;
-        // 最后一个反向 Join
+        Vertex last = vertices.get(n - 1);
+        Vertex secondLast = vertices.get(n - 2);
+
+        double lastX = last.getX();
+        double lastY = last.getY();
+        double dirX = lastX - secondLast.getX();
+        double dirY = lastY - secondLast.getY();
+        double len = Math.hypot(dirX, dirY);
+        double normX = -dirY / len;
+        double normY = dirX / len;
+        double secondLastX = secondLast.getX();
+        double secondLastY = secondLast.getY();
+        double secondLastHalfWidth = secondLast.getWidth() * 0.5;
+
+        // 计算 vPrev-end 的扩张点
+        double prevEndLeftX = secondLastX + prevNormalX * secondLastHalfWidth * scaleX;
+        double prevEndLeftY = secondLastY + prevNormalY * secondLastHalfWidth * scaleY;
+        double prevEndRightX = secondLastX - prevNormalX * secondLastHalfWidth * scaleX;
+        double prevEndRightY = secondLastY - prevNormalY * secondLastHalfWidth * scaleY;
+        // 计算 vCurr-start 的扩张点
+        double currStartLeftX = secondLastX + normX + secondLastHalfWidth * scaleX;
+        double currStartLeftY = secondLastY + normY + secondLastHalfWidth * scaleY;
+        double currStartRightX = secondLastX - normX * secondLastHalfWidth * scaleX;
+        double currStartRightY = secondLastY - normY * secondLastHalfWidth * scaleY;
+
+        JoinContext lastLeftJoin = new JoinContext(
+                secondLast,
+                prevEndLeftX, prevEndLeftY,
+                currStartLeftX, currStartLeftY,
+                miterLimit,
+                context
+        );
+        join.addJoin(lastLeftJoin, poly);
+        double lastHalfWidth = last.getWidth() * 0.5;
+        double lastLeftX = lastX + normX * lastHalfWidth * scaleX;
+        double lastLeftY = lastY + normY * lastHalfWidth * scaleY;
+        double lastRightX = lastX - normX * lastHalfWidth * scaleX;
+        double lastRightY = lastY - normY * lastHalfWidth * scaleY;
+
+        poly.add(lastLeftX, lastLeftY);
+        poly.add(prevEndLeftX, prevEndLeftY);
+        poly.add(currStartLeftX, currStartLeftY);
+
+        poly.add(lastLeftX, lastLeftY);
+
+        // ---- 终点 Cap ----
+        cap.addCap(new CapContext(
+                last,
+                lastLeftX, lastLeftY,
+                lastRightX, lastRightY,
+                dirX, dirY,
+                context
+        ), poly);
+
+        poly.add(lastRightX, lastRightY);
+
         JoinContext lastRightJoin = new JoinContext(
-                rightLastX, rightLastY,
-                prevRightX, prevRightY,
-                last.getX(), last.getY(),
-                hwLast, miterLimit,
-                normalOutSide ? normalX : - normalX,
-                normalOutSide ? normalY : - normalY,
-                tangentOutSide, context);
+                secondLast, currStartRightX, currStartRightY,
+                prevEndRightX, prevEndRightY,
+                miterLimit,
+                context
+        );
         reverseJoins.add(lastRightJoin);
 
-        // 终点 Cap
-        cap.addCap(new CapContext(
-                last.getX(), last.getY(),
-                -lxLast, -lyLast,
-                hwLast,
-                rightLastX, rightLastY,
-                leftLastX, leftLastY, false, context), poly);
-
         // ---- 反向输出右侧边 ----
-        poly.add(rightLastX, rightLastY);
+        poly.add(lastRightX, lastRightY);
         for (int i = reverseJoins.size() - 1; i >= 0; i--) {
             JoinContext jc = reverseJoins.get(i);
             // jc 的顺序是 (currRight, prevRight)，当前轮廓的最后一个点是 currRight，
             // 直接调用 join.addJoin 并添加 prevRight 即可完成连接
             join.addJoin(jc, poly);
             poly.add(jc.getPrevX(), jc.getPrevY());
+            poly.add(jc.getCurrX(), jc.getCurrY());
         }
 
-        // ---- 闭合轮廓 ----
-        poly.add(right0X, right0Y);
+        poly.add(rightX0, rightY0);
 
         double[] outline = poly.toArray();
         if (outline.length < 6) return new Polygon(new double[0]);
         return new Polygon(outline);
+
     }
+
+
+    private Polygon genRectPolygon(Vertex v0, Vertex v1, RenderContext context) {
+        double scaleX = context.getScaleX();
+        double scaleY = context.getScaleY();
+        DoubleList poly = new DoubleList(16);
+        double dirX = v1.getX() - v0.getX();
+        double dirY = v1.getY() - v0.getY();
+
+        double len = Math.hypot(dirX, dirY);
+        if (len < 1e-12) {
+            return null;
+        }
+        double normalX = -dirY / len;
+        double normalY = dirX / len;
+        double halfWidth0 = v0.getWidth() * 0.5;
+        double halfWidth1 = v1.getWidth() * 0.5;
+
+        double leftX0 = v0.getX() + normalX * halfWidth0 * scaleX;
+        double leftY0 = v0.getY() + normalY * halfWidth0 * scaleY;
+        double rightX0 = v0.getX() - normalX * halfWidth0 * scaleX;
+        double rightY0 = v0.getY() - normalY * halfWidth0 * scaleY;
+        double leftX1 = v1.getX() + normalX * halfWidth1 * scaleX;
+        double leftY1 = v1.getY() + normalY * halfWidth1 * scaleY;
+        double rightX1 = v1.getX() - normalX * halfWidth1 * scaleX;
+        double rightY1 = v1.getY() - normalY * halfWidth1 * scaleY;
+
+        cap.addCap(new CapContext(
+                v0,
+                rightX0, leftY0,
+                leftX0, leftY0,
+                - dirX, - dirY,
+                context
+        ), poly);
+
+        poly.add(leftX0, leftY0);
+        poly.add(leftX1, leftY1);
+
+        cap.addCap(new CapContext(
+                v1,
+                leftX1, leftY1,
+                rightX1, rightY1,
+                 dirX, dirY,
+                context
+        ), poly);
+
+        poly.add(rightX1, rightY1);
+        poly.add(rightX0, rightY0);
+
+        double[] outline = poly.toArray();
+        if (outline.length < 6) return null;
+        return new Polygon(outline);
+    }
+
+
 }

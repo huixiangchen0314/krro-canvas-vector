@@ -27,12 +27,6 @@ public final class Polygon {
         this.vertexCount = coords.length / 2;
     }
 
-    /**
-     * 安全复制版本，创建数组副本。
-     */
-    public static Polygon copyOf(double[] coords) {
-        return new Polygon(coords.clone());
-    }
 
     // ---------- 访问器 ----------
     public double[] getCoords() {
@@ -49,24 +43,6 @@ public final class Polygon {
 
     public double getY(int index) {
         return coords[2 * index + 1];
-    }
-
-    // ---------- 几何计算 ----------
-    /**
-     * 计算轴对齐包围盒 (AABB)。
-     */
-    public AABB getBounds() {
-        double minX = coords[0], maxX = coords[0];
-        double minY = coords[1], maxY = coords[1];
-        for (int i = 2; i < coords.length; i += 2) {
-            double x = coords[i];
-            double y = coords[i + 1];
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-        return new AABB(minX, minY, maxX, maxY);
     }
 
     /**

@@ -12,6 +12,8 @@ public final class CurveRenderer {
 
         int canvasW = context.getWidth();
         int canvasH = context.getHeight();
+        double scaleX = context.getScaleX();
+        double scaleY = context.getScaleY();
         List<RenderablePolygon> polys = new ArrayList<>();
         for (RenderableCurve curve : curves) {
             Curve c = curve.getCurve();
@@ -29,7 +31,7 @@ public final class CurveRenderer {
                 PathRenderer renderer = style.getRenderer();
                 PolygonFiller filler = style.getFiller();
                 for (Path path : paths) {
-                    Path simplified = path.simplify(0.5f);
+                    Path simplified = path.simplify(0.5f * scaleX * scaleY);
                     Polygon polygon = renderer.render(simplified, context);
                     if (polygon != null && polygon.isValid())
                     {

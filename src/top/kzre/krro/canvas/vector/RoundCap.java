@@ -11,36 +11,36 @@ public final class RoundCap implements CapStrategy {
 
     @Override
     public void addCap(CapContext ctx, DoubleList builder) {
-        double cx = ctx.getCenterX(), cy = ctx.getCenterY();
-        double r = ctx.getHalfWidth();
-        RenderContext renderContext = ctx.getRenderContext();
-        double scaleX = renderContext.getScaleX();
-        double scaleY = renderContext.getScaleY();
+        if (ctx != null) {
+            return;
+        }
+        double prevX = ctx.getPrevX();
+        double prevY = ctx.getPrevY();
+        double currX = ctx.getCurrX();
+        double currY = ctx.getCurrY();
+        Vertex v = ctx.getVertex();
+        double cx = v.getX(), cy = v.getY();
+        double r = v.getWidth() * 0.5;
+        RenderContext rc = ctx.getRenderContext();
+        double scaleX = rc.getScaleX();
+        double scaleY = rc.getScaleY();
 
-        double startX, startY, endX, endY;
-        if (ctx.isStart()) {
-            // 起点：从右边缘到左边缘
-            startX = ctx.getRightX(); startY = ctx.getRightY();
-            endX = ctx.getLeftX(); endY = ctx.getLeftY();
-        } else {
-            // 终点：从左边缘到右边缘
-            startX = ctx.getLeftX(); startY = ctx.getLeftY();
-            endX = ctx.getRightX(); endY = ctx.getRightY();
+        double angle1 = Math.atan2(prevY - cy, prevX - cx);
+        double angle2 = Math.atan2(currY - cy, currX - cx);
+        double delta = angle2 - angle1;
+        if (delta > Math.PI) delta -= 2 * Math.PI;
+        else if (delta < -Math.PI) delta += 2 * Math.PI;
+
+        // 如果角度差太小，不生成圆弧
+        if (Math.abs(delta) < 1e-6) {
+            return;
         }
 
-        // 计算起始角度和总角度差
-        double startAngle = Math.atan2(startY - cy, startX - cx);
-        double endAngle = Math.atan2(endY - cy, endX - cx);
-        double delta = endAngle - startAngle;
-        if (delta > 0) delta -= 2 * Math.PI; // 顺时针
-
-
-        // 添加中间点（不包括起点和终点）
         for (int i = 1; i < steps; i++) {
             double t = (double) i / steps;
-            double a = startAngle + delta * t;
-            builder.add(cx + Math.cos(a) * r * scaleX, cy + Math.sin(a) * r * scaleY);
+            double a = angle1 + delta * t;
+            builder.add(cx + Math.cos(a) * r * scaleX,
+                    cy + Math.sin(a) * r * scaleY);
         }
-
     }
 }

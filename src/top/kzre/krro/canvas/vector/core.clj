@@ -60,8 +60,7 @@
   (case kw
     :butt Cap/BUTT
     :round Cap/ROUND
-    :square Cap/SQUARE
-    (throw (ex-info "Unknown cap style" {:mode kw}))))
+    Cap/SQUARE))
 
 (defn keyword->join
   "将 Clojure 关键字转换为 Join 枚举。"
@@ -69,8 +68,7 @@
   (case kw
     :miter Join/MITER
     :round Join/ROUND
-    :bevel Join/BEVEL
-    (throw (ex-info "Unknown join style" {:mode kw}))))
+    Join/BEVEL))
 
 (defn keyword->fill-rule
   "将 Clojure 关键字转换为 FillRule 枚举。"
@@ -190,7 +188,7 @@
                flatness  (:flatness layer 0.25)
                tmp-canvas (TiledCanvas. tile-size)
                ;; 图层坐标到视口坐标的缩放，用来控制路径Stroke 的扩张
-               transform (:transform layer)
+               ^floats transform (:transform layer)
                scale-x (if transform
                        (KMath/mat2dScaleX transform)
                        1.0)
