@@ -34,7 +34,7 @@ public final class EvenOddPolygonFiller extends AbstractPolygonFiller {
         // TODO 池化
         // 裁剪多边形到瓦片区域（局部坐标）
 
-        Polygon clipped = polygon.clipToRect(x0 - CLIP_EDGE_EXPAND, y0, tw, th);
+        Polygon clipped = polygon.clipToRect(x0 - CLIP_EDGE_EXPAND , y0 - CLIP_EDGE_EXPAND, tw + CLIP_EDGE_EXPAND, th + CLIP_EDGE_EXPAND);
         if (clipped == null || clipped.getVertexCount() < 3) return;
         double[] localCoords = clipped.getCoords().clone();
         for (int i = 0; i < localCoords.length; i += 2) {

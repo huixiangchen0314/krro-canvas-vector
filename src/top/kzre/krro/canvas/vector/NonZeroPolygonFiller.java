@@ -27,7 +27,7 @@ public final class NonZeroPolygonFiller extends AbstractPolygonFiller {
         if (tw <= 0 || th <= 0) return;
 
         // 裁剪多边形到瓦片（世界坐标）
-        Polygon clipped = polygon.clipToRect(x0 - CLIP_EDGE_EXPAND , y0, tw, th);
+        Polygon clipped = polygon.clipToRect(x0 - CLIP_EDGE_EXPAND , y0 - CLIP_EDGE_EXPAND, tw + CLIP_EDGE_EXPAND, th + CLIP_EDGE_EXPAND);
         if (clipped == null || clipped.getVertexCount() < 3) return;
 
 
