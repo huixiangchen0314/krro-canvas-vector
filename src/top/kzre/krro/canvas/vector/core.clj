@@ -47,6 +47,40 @@
      :antialias   antialias}
     (select-keys opts [:x :y :scale-x :scale-y :rotation :transform])))
 
+
+(defn path-width-type
+  "路径宽度控制类型。根据路径中的宽度控制字段确定宽度控制方式。
+
+  返回值为以下四种类型之一：
+
+  - :fixed     固定宽度，整个路径宽度恒定，使用 :width 或默认值。
+                对应数据：无 :width-samples，无 :t-params，无 :width-curve。
+
+  - :point-width 控制点宽度，宽度值存储在每个控制点上（宽度采样数量等于控制点数量）。
+                对应数据：有 :width-samples，无 :t-params，无 :width-curve。
+                宽度通过控制点索引直接索引。
+
+  - :t-width   参数化宽度，宽度采样与参数 t（0~1）关联，采样点数独立于控制点数量。
+                对应数据：有 :width-samples，有 :t-params，无 :width-curve。
+                宽度通过 t 参数线性插值，适用于宽度变化复杂但路径简单的场景。
+
+  - :curve     曲线宽度控制，使用显式的宽度曲线函数（如样条或高阶插值）。
+                对应数据：有 :width-curve。
+                提供最灵活的宽度控制，但需要额外计算开销。
+
+  判断优先级：:width-curve > :width-samples > 默认 :fixed。
+
+  示例：
+    (path-width-type path) ; => :fixed | :point-width | :t-width | :curve"
+  [path]
+  (cond
+    (:width-curve path) :curve
+    (seq (:width-samples path))
+    (if (seq (:t-params path))
+      :t-width
+      :point-width)
+    :else :fixed))
+
 ;; ============================================================================
 ;; 辅助转换函数
 ;; ============================================================================
