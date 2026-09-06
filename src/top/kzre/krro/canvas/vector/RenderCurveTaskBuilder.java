@@ -170,20 +170,21 @@ public final class RenderCurveTaskBuilder {
         private final Curve curve;
         private FillConfigurer fill;
         private StrokeConfigurer stroke;
-        private float flatness = 0.25f;
-        private float widthTolerance = 1.0f;
+        // TODO flatness 移动到 RenderContext 作为全局数据
+        private double flatness = 0.25f;
+        private double widthTolerance = 0.02f;
 
         private RenderableCurveConfigurer(Curve curve) {
             this.curve = curve;
         }
 
         // 展平参数
-        public RenderableCurveConfigurer flatness(float flatness) {
+        public RenderableCurveConfigurer flatness(double flatness) {
             this.flatness = flatness;
             return this;
         }
 
-        public RenderableCurveConfigurer widthTolerance(float widthTolerance) {
+        public RenderableCurveConfigurer widthTolerance(double widthTolerance) {
             this.widthTolerance = widthTolerance;
             return this;
         }
@@ -233,7 +234,7 @@ public final class RenderCurveTaskBuilder {
                 flattener = new AdaptiveFlattener(flatness, stroke.widthFunc, widthTolerance);
             } else {
                 float width = (stroke != null) ? stroke.width : 1.0f;
-                flattener = new AdaptiveFlattener(flatness, t -> (double) width, widthTolerance);
+                flattener = new AdaptiveFlattener(flatness, new FixedWidthFunction(width), widthTolerance);
             }
 
             // 添加到曲线列表
@@ -283,7 +284,7 @@ public final class RenderCurveTaskBuilder {
 
         public final class StrokeConfigurer extends Configurer {
             private float width = 1.0f;
-            private DoubleUnaryOperator widthFunc;
+            private WidthFunction widthFunc;
             private float[] color;
             private Cap cap = Cap.ROUND;
             private Join join = Join.ROUND;
@@ -295,7 +296,7 @@ public final class RenderCurveTaskBuilder {
                 return this;
             }
 
-            public StrokeConfigurer widthFunc(DoubleUnaryOperator widthFunc) {
+            public StrokeConfigurer widthFunc(WidthFunction widthFunc) {
                 this.widthFunc = widthFunc;
                 return this;
             }

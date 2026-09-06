@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+
 public final class Path {
     private final List<Vertex> vertices;
     private final boolean closed;
@@ -77,5 +78,10 @@ public final class Path {
             }
         }
         return new Path(simplified, this.isClosed());
+    }
+
+    @Override
+    public String toString() {
+        return "Path{vertices=" + vertices + ", closed=" + closed + "}";
     }
 }

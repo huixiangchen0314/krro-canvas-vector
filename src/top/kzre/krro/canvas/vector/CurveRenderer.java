@@ -24,7 +24,8 @@ public final class CurveRenderer {
 
             List<Path> paths = new ArrayList<>();
             for (Curve visible : visibles) {
-                Path path = flattener.flatten(visible);
+                Path path = flattener.flatten(visible, context);
+                System.out.println(path.toString());
                 paths.add(path);
             }
             for (CurveStyle style : styles) {

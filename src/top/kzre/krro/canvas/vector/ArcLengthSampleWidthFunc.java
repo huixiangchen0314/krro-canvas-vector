@@ -7,7 +7,7 @@ import java.util.function.DoubleUnaryOperator;
  * 提供两个等长的数组：arc-params（归一化弧长 0..1）和对应的宽度值。
  * 使用线性插值计算任意 t 处的宽度，超出范围时钳位到边界值。
  */
-public final class ArcLengthSampleWidthFunc implements DoubleUnaryOperator {
+public final class ArcLengthSampleWidthFunc implements WidthFunction {
 
     private final double[] arcParams; // 归一化弧长，严格递增
     private final double[] widths;
@@ -34,7 +34,7 @@ public final class ArcLengthSampleWidthFunc implements DoubleUnaryOperator {
     }
 
     @Override
-    public double applyAsDouble(double t) {
+    public double map(double t) {
         // 钳位到 [0,1]
         if (t <= 0.0) return widths[0];
         if (t >= 1.0) return widths[n - 1];

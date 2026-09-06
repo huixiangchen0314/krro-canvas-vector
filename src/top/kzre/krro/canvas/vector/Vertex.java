@@ -40,4 +40,9 @@ public final class Vertex {
     public double getWidth() {
         return width;
     }
+
+    @Override
+    public String toString() {
+        return "Vertex{x=" + x + ", y=" + y + ", t=" + t + ", width=" + width + "}";
+    }
 }
