@@ -18,8 +18,8 @@ public final class RenderCurveTask implements Runnable {
     private final AtomicBoolean done = new AtomicBoolean(false);
 
     public RenderCurveTask(List<RenderableCurve> curves, RenderContext renderContext) {
-        if (curves == null || curves.isEmpty()) {
-            throw new IllegalArgumentException("curves must not be null or empty");
+        if (curves == null ) {
+            throw new IllegalArgumentException("curves must not be null");
         }
         if (renderContext == null) {
             throw new IllegalArgumentException("renderContext must not be null");
@@ -33,6 +33,9 @@ public final class RenderCurveTask implements Runnable {
         // 原子地检查并设置状态，确保只执行一次
         if (!done.compareAndSet(false, true)) {
             return; // 已执行过，直接返回
+        }
+        if (curves.isEmpty()) {
+            return;
         }
         CurveRenderer.render(curves, renderContext);
     }

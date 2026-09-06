@@ -79,10 +79,6 @@ public final class RenderCurveTaskBuilder {
             c.config();
         }
 
-        if (curves.isEmpty()) {
-            throw new IllegalStateException("No curves configured.");
-        }
-
         return new RenderCurveTask(curves, renderContext);
     }
 
