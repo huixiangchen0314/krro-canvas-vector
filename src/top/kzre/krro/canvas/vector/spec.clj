@@ -12,16 +12,17 @@
 
 ;; ── Bézier 路径 ───────────────────────────────────
 (s/def ::bezier-curve ::bezier/curve)
+(s/def ::width-curve ::bezier/curve)
 ;; 宽度采样数据：等弧长采样宽度序列 与 对应的弧长参数序列
 (s/def ::width-samples (s/coll-of number? :kind vector?))
 (s/def ::arc-params (s/coll-of number? :kind vector?))
 (s/def ::bezier-path (s/keys :req-un [::path-type ::bezier-curve]
-                             :opt-un [::width-samples ::arc-params]))
+                             :opt-un [::width-samples ::arc-params ::width-curve]))
 
 ;; ── Catmull‑Rom 路径 ─────────────────────────────
 (s/def ::cr-curve ::cr/curve)
 (s/def ::catmull-rom-path (s/keys :req-un [::path-type ::cr-curve]
-                                  :opt-un [::width-samples ::arc-params]))
+                                  :opt-un [::width-samples ::arc-params ::width-curve]))
 
 (defmulti path-spec :path-type)
 (defmethod path-spec :bezier [_] ::bezier-path)
