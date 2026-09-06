@@ -31,7 +31,7 @@
 
 ;; ── 路径集合：map + order ────────────────────────
 (s/def ::id keyword?)
-(s/def ::paths-map (s/map-of ::id ::path :conform-keys true))
+(s/def ::paths (s/map-of ::id ::path :conform-keys true))
 (s/def ::path-order (s/coll-of ::id :kind vector? :distinct true))
 
 
@@ -39,7 +39,7 @@
 ;; ── 矢量图层属性 ────────────────────────────────
 (s/def ::antialias boolean?)
 (s/def ::vector-props
-  (s/keys :req-un [::paths-map ::path-order]
+  (s/keys :req-un [::paths ::path-order]
           :opt-un [::antialias]))
 
 ;; 注册到图层系统

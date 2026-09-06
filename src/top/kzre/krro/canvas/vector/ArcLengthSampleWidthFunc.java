@@ -1,7 +1,5 @@
 package top.kzre.krro.canvas.vector;
 
-import java.util.function.DoubleUnaryOperator;
-
 /**
  * 基于弧长参数采样点的可变宽度函数。
  * 提供两个等长的数组：arc-params（归一化弧长 0..1）和对应的宽度值。

@@ -42,7 +42,7 @@
      :blend-mode   blend-mode
      :visible      visible
      :backend      backend
-     :paths-map    {}
+     :paths    {}
      :path-order   []
      :antialias   antialias}
     (select-keys opts [:x :y :scale-x :scale-y :rotation :transform])))
@@ -207,7 +207,7 @@
                         1.0)
 
                transformed-paths (for [path-id (:path-order layer)
-                                   :let [path (get (:paths-map layer) path-id)
+                                   :let [path (get (:paths layer) path-id)
                                          curve (case (:path-type path)
                                                  :bezier (bezier/edn->curve (:bezier-curve path))
                                                  :catmull-rom (let [cr-obj (cr/edn->crcurve (:cr-curve path))]
