@@ -1,8 +1,20 @@
 package top.kzre.krro.canvas.vector;
 
+import top.kzre.colorutils.blend.PorterDuff;
+import top.kzre.krro.util.pool.FloatsHolder;
+import top.kzre.krro.util.pool.FloatsPool;
+import top.kzre.krro.util.pool.PoolManagers;
 import top.kzre.krro.util.tile.TiledCanvas;
 
 public final class AnalyticAAStrategy implements AntiAliasStrategy {
+
+    private static final FloatsPool pool4f;
+
+    static {
+        FloatsHolder holder = PoolManagers.floats().getHolder();
+        pool4f =  holder.getPool(4);
+    }
+
     @Override
     public void fillPixel(double x, double y, float[] color, TiledCanvas canvas) {
         // 取坐标的小数部分作为覆盖率（0~1）
@@ -26,6 +38,27 @@ public final class AnalyticAAStrategy implements AntiAliasStrategy {
             dest[2] = color[2] * alpha + dest[2] * invAlpha;
             dest[3] = alpha + dest[3] * invAlpha;
             canvas.setPixel(ix, iy, dest);
+
+            float[] colorCopy = pool4f.acquire();
+            try {
+                colorCopy[0] = color[0];
+                colorCopy[1] = color[1];
+                colorCopy[2] = color[2];
+                colorCopy[3] = (float) (color[3] * coverage);
+
+
+                int tileSize = canvas.getTileSize();
+                int tx = TiledCanvas.tile(ix, tileSize);
+                int ty = TiledCanvas.tile(iy, tileSize);
+                float[] pixels = canvas.getTile(tx, ty).getPixelsSnapshot();
+                int offset = TiledCanvas.localOffset(ix, iy, tileSize, 4);
+
+                PorterDuff.over(pixels, offset,
+                        pixels, offset,
+                        colorCopy, 0);
+            }finally {
+                pool4f.release(colorCopy);
+            }
 
         }
         // 否则忽略
