@@ -26,6 +26,7 @@ public final class AnalyticAAStrategy implements AntiAliasStrategy {
             dest[2] = color[2] * alpha + dest[2] * invAlpha;
             dest[3] = alpha + dest[3] * invAlpha;
             canvas.setPixel(ix, iy, dest);
+
         }
         // 否则忽略
     }

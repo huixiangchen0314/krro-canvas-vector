@@ -42,34 +42,28 @@ public final class NonZeroPolygonFiller extends AbstractPolygonFiller {
 
         // 构建边缘表（局部坐标）
         List<Edge>[] buckets = buildEdgeBuckets(clipped, th);
-        List<Edge> active = new ArrayList<>();
+        ActiveEdgeTable aet = new ActiveEdgeTable();
 
         for (int localY = 0; localY < th; localY++) {
             if (localY < buckets.length && buckets[localY] != null) {
-                active.addAll(buckets[localY]);
+                aet.addAll(buckets[localY]);
             }
-            final int y = localY;
-            active.removeIf(e -> e.ymax <= y);
-            active.sort(Comparator.comparingDouble(e -> e.x));
+            aet.removeExpired(localY);
+            aet.sortByX();
 
             int winding = 0;
             double spanStart = 0;
             boolean inside = false;
-            for (Edge edge : active) {
+            for (int i = 0; i < aet.size(); i++) {
+                Edge edge = aet.get(i);
                 winding += edge.winding;
                 if (winding != 0 && !inside) {
-                    //winding != 0 且 inside == false，表示进入多边形内部
                     spanStart = edge.x;
                     inside = true;
                 } else if (winding == 0 && inside) {
-                    // winding == 0 且 inside == true，表示离开多边形内部
                     double x1 = spanStart;
                     double x2 = edge.x;
-                    if (x1 > x2) {
-                        double tmp = x1;
-                        x1 = x2;
-                        x2 = tmp;
-                    }
+                    if (x1 > x2) { double tmp = x1; x1 = x2; x2 = tmp; }
                     fillSpan(x0, y0, localY, x1, x2, tw, canvas, aa);
                     inside = false;
                 }
@@ -81,9 +75,7 @@ public final class NonZeroPolygonFiller extends AbstractPolygonFiller {
                 fillSpan(x0, y0, localY, x1, x2, tw, canvas, aa);
             }
 
-            for (Edge e : active) {
-                e.x += e.dx;
-            }
+            aet.advanceX();
         }
     }
 
