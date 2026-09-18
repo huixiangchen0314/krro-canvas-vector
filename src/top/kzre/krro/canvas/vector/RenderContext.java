@@ -33,7 +33,7 @@ public final class RenderContext {
 
         // 非均匀缩放取几何平均作为有效缩放，作为阈值换算与半径估计的参考量。
         double s = Math.sqrt(Math.abs(builder.scaleX * builder.scaleY));
-        this.effectiveScale = (s < MIN_SCALE) ? MIN_SCALE : s;
+        this.effectiveScale = Math.max(s, MIN_SCALE);
     }
 
     public TiledCanvas getDestCanvas() {

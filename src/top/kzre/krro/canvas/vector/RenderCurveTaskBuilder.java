@@ -226,16 +226,19 @@ public final class RenderCurveTaskBuilder {
 
             // 构建展平器
             CurveFlattener flattener;
+            double maxWidth;
             if (stroke != null && stroke.widthFunc != null) {
+                maxWidth = stroke.widthFunc.max();
                 flattener = new AdaptiveFlattener(stroke.widthFunc, widthTolerance);
             } else {
-                float width = (stroke != null) ? stroke.width : 1.0f;
+                double width = (stroke != null) ? stroke.width : 1.0;
+                maxWidth = width;
                 flattener = new AdaptiveFlattener(new FixedWidthFunction(width), widthTolerance);
             }
 
             // 添加到曲线列表
             RenderCurveTaskBuilder.this.curves.add(
-                    new RenderableCurve(curve, flattener, styles)
+                    new RenderableCurve(curve, flattener, styles, maxWidth)
             );
         }
 
@@ -279,7 +282,7 @@ public final class RenderCurveTaskBuilder {
         // ---- 描边配置器 ----
 
         public final class StrokeConfigurer extends Configurer {
-            private float width = 1.0f;
+            private double width = 1.0f;
             private WidthFunction widthFunc;
             private float[] color;
             private Cap cap = Cap.ROUND;
@@ -287,7 +290,7 @@ public final class RenderCurveTaskBuilder {
             private float miterLimit = 4.0f;
             private CurveStyle style;
 
-            public StrokeConfigurer width(float width) {
+            public StrokeConfigurer width(double width) {
                 this.width = width;
                 return this;
             }

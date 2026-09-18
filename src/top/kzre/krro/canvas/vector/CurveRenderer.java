@@ -11,11 +11,9 @@ public final class CurveRenderer {
     public static void render(List<RenderableCurve> curves, RenderContext context) {
         long t0 = System.nanoTime();
 
-        int canvasW = context.getViewWidth();
-        int canvasH = context.getViewHeight();
-        double scaleX = context.getScaleX();
-        double scaleY = context.getScaleY();
-
+        int viewWidth = context.getViewWidth();
+        int viewHeight = context.getViewHeight();
+        double effectiveScale = context.getEffectiveScale();
         // 各阶段累计耗时（纳秒）
         long tClip = 0, tFlatten = 0, tSimplify = 0, tRender = 0, tFill = 0;
         int curveCount = 0;
@@ -29,12 +27,13 @@ public final class CurveRenderer {
         for (RenderableCurve curve : curves) {
             curveCount++;
             Curve c = curve.getCurve();
+            double maxHalfWidth = curve.getMaxHalfWidth() * effectiveScale;
             CurveFlattener flattener = curve.getFlattener();
             List<CurveStyle> styles = curve.getStyles();
 
             long s1 = System.nanoTime();
             List<Curve> visibles = new ArrayList<>();
-            clipCurve(visibles, c, canvasW, canvasH);
+            CurveClipper.clipAABB(c, maxHalfWidth,0, 0, viewWidth, viewHeight, visibles);
             tClip += System.nanoTime() - s1;
 
             if (visibles.isEmpty()) continue;
@@ -107,57 +106,6 @@ public final class CurveRenderer {
     private static double pct(long part, long total) {
         return total == 0 ? 0.0 : (part * 100.0 / total);
     }
-
-
-    private static void clipCurve(List<Curve> out, Curve curve, int width, int height) {
-        if (curve == null || curve.getPoints().isEmpty()) return;
-
-        // 闭合曲线直接添加，无需裁剪
-        if (curve.isClosed()) {
-            out.add(curve);
-            return;
-        }
-
-        int segCount = curve.getSegmentCount();
-        List<ControlPoint> currentPoints = new ArrayList<>();
-
-        for (int i = 0; i < segCount; i++) {
-            ControlPoint cpStart = curve.getPoints().get(i);
-            ControlPoint cpEnd   = curve.getPoints().get((i + 1) % curve.getPoints().size());
-
-            boolean visible;
-            if (Segments.isStraightLine(cpStart, cpEnd)) {
-                // 快速路径：退化（直线）段，仅用端点判断包围盒
-                double minX = Math.min(cpStart.getX(), cpEnd.getX());
-                double maxX = Math.max(cpStart.getX(), cpEnd.getX());
-                double minY = Math.min(cpStart.getY(), cpEnd.getY());
-                double maxY = Math.max(cpStart.getY(), cpEnd.getY());
-                visible = !(maxX < 0 || minX > width || maxY < 0 || minY > height);
-            } else {
-                // 曲线段：计算精确的贝塞尔包围盒
-                Segment seg = curve.getSegment(i);
-                AABB aabb = Segments.aabb(seg);
-                visible = !(aabb.getMaxX() < 0 || aabb.getMinX() > width ||
-                        aabb.getMaxY() < 0 || aabb.getMinY() > height);
-            }
-
-            if (visible) {
-                if (currentPoints.isEmpty()) {
-                    currentPoints.add(cpStart);
-                }
-                currentPoints.add(cpEnd);
-            } else {
-                if (!currentPoints.isEmpty()) {
-                    out.add(new Curve(currentPoints, false));
-                    currentPoints = new ArrayList<>();
-                }
-            }
-        }
-        if (!currentPoints.isEmpty()) {
-            out.add(new Curve(currentPoints, false));
-        }
-    }
-
 
 
 }

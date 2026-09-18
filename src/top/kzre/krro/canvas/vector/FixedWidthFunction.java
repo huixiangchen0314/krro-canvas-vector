@@ -16,6 +16,11 @@ public final class FixedWidthFunction implements WidthFunction {
     }
 
     @Override
+    public double max() {
+        return width;
+    }
+
+    @Override
     public double drive(double x) {
         return 0.0;
     }

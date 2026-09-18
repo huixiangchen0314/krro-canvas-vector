@@ -9,6 +9,7 @@ public final class ArcLengthSampleWidthFunc implements WidthFunction {
 
     private final double[] arcParams; // 归一化弧长，严格递增
     private final double[] widths;
+    private final double maxWidth;
     private final int n;
 
     /**
@@ -29,6 +30,13 @@ public final class ArcLengthSampleWidthFunc implements WidthFunction {
         this.arcParams = arcParams.clone(); // 防御性拷贝
         this.widths = widths.clone();
         this.n = arcParams.length;
+
+        // 预计算最大宽度——避免 max() 每次遍历
+        double m = widths[0];
+        for (int i = 1; i < n; i++) {
+            if (widths[i] > m) m = widths[i];
+        }
+        this.maxWidth = m;
     }
 
     @Override
@@ -55,5 +63,10 @@ public final class ArcLengthSampleWidthFunc implements WidthFunction {
         }
         double ratio = (t - t0) / (t1 - t0);
         return widths[lo] + ratio * (widths[hi] - widths[lo]);
+    }
+
+    @Override
+    public double max() {
+        return maxWidth;
     }
 }

@@ -1,11 +1,13 @@
 package top.kzre.krro.canvas.vector;
 
-@FunctionalInterface
+
 public interface WidthFunction {
     /**
      * 应用进行函数映射 x 属于 (0, 1) 范围
      */
     double map(double x);
+
+    double max();
 
     /**
      * 获取映射函数在 x 位置的一阶导数（前向/后向/中心差分）

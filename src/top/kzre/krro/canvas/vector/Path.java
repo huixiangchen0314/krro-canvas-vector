@@ -8,10 +8,18 @@ import java.util.List;
 public final class Path {
     private final List<Vertex> vertices;
     private final boolean closed;
+    private final double maxWidth;
 
     public Path(List<Vertex> vertices, boolean closed) {
         this.vertices = new ArrayList<>(vertices);
         this.closed = closed;
+        double maxWidth = 0;
+        for (Vertex vertex : vertices) {
+            if (maxWidth < vertex.getWidth()) {
+                maxWidth = vertex.getWidth();
+            }
+        }
+        this.maxWidth = maxWidth;
     }
 
     public List<Vertex> getVertices() {
@@ -84,4 +92,9 @@ public final class Path {
     public String toString() {
         return "Path{vertices=" + vertices + ", closed=" + closed + "}";
     }
+
+    public double getMaxWidth() {
+        return maxWidth;
+    }
+
 }
