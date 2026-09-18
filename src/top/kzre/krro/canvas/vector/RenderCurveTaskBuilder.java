@@ -4,7 +4,6 @@ import top.kzre.curve.bezier2d.Curve;
 import top.kzre.krro.util.tile.TiledCanvas;
 
 import java.util.*;
-import java.util.function.DoubleUnaryOperator;
 
 /**
  * 构建渲染曲线任务的 Builder，支持链式配置。
@@ -121,7 +120,7 @@ public final class RenderCurveTaskBuilder {
             return this;
         }
 
-        public RenderConfigurationConfigurer aa(AntiAlias aaMode) {
+        public RenderConfigurationConfigurer antiAlias(AntiAlias aaMode) {
             this.aaMode = aaMode;
             return this;
         }

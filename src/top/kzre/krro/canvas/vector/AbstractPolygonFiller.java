@@ -11,14 +11,19 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
     public static final int CLIP_EDGE_EXPAND = 1;
 
     /**
-     * 构建边缘表（bucket），每个桶对应于扫描线 y 坐标。
-     * 边缘表存储了从当前顶点开始到下一个顶点的边信息。
+     * 构建边缘表（bucket），每个桶对应瓦片内的一条扫描线。
+     * <p>
+     * 边本身使用世界坐标存储，桶下标 = {@code edge.ymin - y0}。
+     *
+     * @param polygon 已裁剪到瓦片附近的多边形（世界坐标）
+     * @param y0      瓦片在世界坐标下的左上角 y
+     * @param lines   瓦片高度（局部像素数）
      */
     @SuppressWarnings("unchecked")
-    protected static List<Edge>[] buildEdgeBuckets(Polygon polygon, int lines) {
+    protected static List<Edge>[] buildEdgeBuckets(Polygon polygon, int y0, int lines) {
         List<Edge>[] buckets = new List[lines];
         for (int i = 0; i < lines; i++) {
-            buckets[i] = new ArrayList<>();
+            buckets[i] = new ArrayList<Edge>();
         }
 
         int n = polygon.getVertexCount();
@@ -30,20 +35,22 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
             double y2 = polygon.getY(j);
             if (Math.abs(y2 - y1) < 1e-12) continue; // 忽略水平边
 
-
             Edge edge = new Edge(x1, y1, x2, y2);
-            int y = Math.max(0, edge.ymin);
-            if (y < lines) {
-                buckets[y].add(edge);
+
+            // 世界坐标 → 瓦片局部行号
+            int localY = edge.ymin - y0;
+            if (localY < 0) localY = 0;
+            if (localY < lines) {
+                buckets[localY].add(edge);
             }
         }
         return buckets;
     }
 
     protected static class Edge {
-        final int ymin, ymax; // 边的有效 y 范围（半开区间）
+        final int ymin, ymax; // 世界坐标下边的有效 y 范围（半开区间）
         final double dx;      // 单位 y 变化对应的 x 增量
-        double x;             // 当前扫描线处的 x 值
+        double x;             // 当前扫描线处的 x 值（世界坐标）
         final int winding;    // +1 或 -1，用于非零规则
 
         Edge(double x1, double y1, double x2, double y2) {
@@ -65,7 +72,6 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
 
     protected static class ActiveEdgeTable {
         private static final int INITIAL_CAPACITY = 16;
-        /** 小数组切换为插入排序的阈值 */
         private static final int INSERTION_SORT_THRESHOLD = 8;
 
         private Edge[] edges = new Edge[INITIAL_CAPACITY];
@@ -77,13 +83,11 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
 
         public void clear() { size = 0; }
 
-        /** 添加单条边 */
         public void add(Edge e) {
             if (size == edges.length) grow(1);
             edges[size++] = e;
         }
 
-        /** 批量添加（来自 bucket） */
         public void addAll(List<Edge> list) {
             int n = list.size();
             if (n == 0) return;
@@ -93,10 +97,7 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
             }
         }
 
-        /**
-         * 移除所有已失效的边（ymax <= y）。
-         * 使用紧凑化（compaction），O(size)。
-         */
+        /** 移除所有已失效的边（ymax <= y），y 为世界坐标扫描线 */
         public void removeExpired(int y) {
             int w = 0;
             for (int i = 0; i < size; i++) {
@@ -108,21 +109,17 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
             size = w;
         }
 
-        /** 按 x 排序（快速排序） */
         public void sortByX() {
             if (size > 1) {
                 quickSort(edges, 0, size - 1);
             }
         }
 
-        /** 扫描完当前行后，把所有边的 x 推进一个像素 */
         public void advanceX() {
             for (int i = 0; i < size; i++) {
                 edges[i].x += edges[i].dx;
             }
         }
-
-        // ── 内部实现 ─────────────────────────────────
 
         private void grow(int needed) {
             int newCap = Math.max(edges.length << 1, size + needed);
@@ -131,16 +128,13 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
             edges = newEdges;
         }
 
-        /** 三数取中 + Hoare 分区 + 尾递归消除 */
         private static void quickSort(Edge[] arr, int lo, int hi) {
             while (lo < hi) {
-                // 小数组用插入排序（更快，且避免递归开销）
                 if (hi - lo < INSERTION_SORT_THRESHOLD) {
                     insertionSort(arr, lo, hi);
                     return;
                 }
 
-                // 三数取中，将枢轴放到 hi-1，避免 arr[hi] 作为枢轴时出现退化
                 int mid = (lo + hi) >>> 1;
                 if (arr[mid].x < arr[lo].x) swap(arr, lo, mid);
                 if (arr[hi].x  < arr[lo].x) swap(arr, lo, hi);
@@ -150,17 +144,13 @@ public abstract class AbstractPolygonFiller implements PolygonFiller {
 
                 int i = lo, j = hi - 1;
                 while (true) {
-                    // 从左往右找第一个 >= pivot
                     while (arr[++i].x < pivot) {}
-                    // 从右往左找第一个 <= pivot
                     while (arr[--j].x > pivot) {}
                     if (i >= j) break;
                     swap(arr, i, j);
                 }
-                // 把枢轴放回正确位置
                 swap(arr, i, hi - 1);
 
-                // 尾递归消除：先处理较小的一半，再迭代处理较大的一半
                 if (i - lo < hi - i) {
                     quickSort(arr, lo, i - 1);
                     lo = i + 1;
