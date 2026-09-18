@@ -211,21 +211,33 @@
                                   curve))))))
         (:path-order layer)))
 
-(defn- blit-result!
-  "把临时画布 blit 到目标画布。"
-  [^TiledCanvas dst ^TiledCanvas src layer
-   view-width view-height dirty-tiles subpixel?]
-  (PixelBlitter/blit
-    (.build
-      (doto (PixelBlitter$BlitterRequest/builder)
-        (.dst dst)
-        (.src src)
-        (.viewSize view-width view-height)
-        (.blendMode (lu/blend-mode-str (:blend-mode layer) :normal))
-        (.opacity (:opacity layer 1.0))
-        (.dirtyTiles dirty-tiles)
-        (.subpixel subpixel?)))))
 
+(defn render-to-canvas!
+  "把矢量图层的曲线渲染到临时画布。
+   前置条件：调用方负责 tmp 的创建与清理。"
+  [layer ^TiledCanvas tmp {:keys [view-width view-height dirty-tiles]}]
+  (let [antialias (:antialias layer true)
+        flatness  (:flatness layer 0.25)
+        {:keys [scale-x scale-y xform]}
+        (transform-info (:transform layer))
+
+        transformed-paths
+        (p :build-transformed-curves
+           (build-layer-curves layer xform))
+
+        task
+        (p :build-render-task
+           (apply build-render-task
+                  tmp view-width view-height
+                  {:scale-x     scale-x
+                   :scale-y     scale-y
+                   :flatness    flatness
+                   :dirty-tiles dirty-tiles
+                   :antialias   antialias}
+                  transformed-paths))]
+
+    (p :run-render-task (.run task))
+    nil))
 
 (defmethod composite/composite-layer :vector
   [layer ^TiledCanvas canvas
@@ -233,31 +245,23 @@
     :or   {subpixel? false}}]
   (profile
     {:id :vector/render}
-    (let [tile-size  (.getTileSize canvas)
-          antialias  (:antialias layer true)
-          flatness   (:flatness layer 0.25)
-          {:keys [scale-x scale-y xform]}
-          (transform-info (:transform layer))
-          tmp-canvas (TiledCanvas. tile-size)]
+    (let [tmp-canvas (TiledCanvas. (.getTileSize canvas))]
       (try
-        (let [transformed-paths
-              (p :build-transformed-curves
-                 (build-layer-curves layer xform))
-
-              task
-              (p :build-render-task
-                 (apply build-render-task
-                        tmp-canvas view-width view-height
-                        {:scale-x     scale-x
-                         :scale-y     scale-y
-                         :flatness    flatness
-                         :dirty-tiles dirty-tiles
-                         :antialias   antialias}
-                        transformed-paths))]
-          (p :run-render-task (.run task))
-          (p :blit-canvas
-             (blit-result! canvas tmp-canvas layer
-                           view-width view-height dirty-tiles subpixel?))
-          (promise/resolved canvas))
+        (render-to-canvas! layer tmp-canvas
+                              {:view-width  view-width
+                               :view-height view-height
+                               :dirty-tiles dirty-tiles})
+        (p :blit-canvas
+           (PixelBlitter/blit
+             (.build
+               (doto (PixelBlitter$BlitterRequest/builder)
+                 (.dst canvas)
+                 (.src tmp-canvas)
+                 (.viewSize view-width view-height)
+                 (.blendMode (lu/blend-mode-str (:blend-mode layer) :normal))
+                 (.opacity (:opacity layer 1.0))
+                 (.dirtyTiles dirty-tiles)
+                 (.subpixel subpixel?)))))
+        (promise/resolved canvas)
         (finally
           (.clear tmp-canvas))))))
