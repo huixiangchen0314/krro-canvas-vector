@@ -1,11 +1,9 @@
 package top.kzre.krro.canvas.vector;
 
-import top.kzre.curve.bezier2d.AABB;
-
 import java.util.Arrays;
 
 /**
- * 不可变多边形，顶点按顺序排列，不要求首尾重复（闭合隐式表示）。
+ * 不可变多边形，顶点按顺序排列，不要求首尾重复（闭合隐式表示, 即总是闭合）。
  * 内部存储为 double[]，格式 [x0, y0, x1, y1, ..., xn, yn]。
  * 最小顶点数为 3（三角形）。
  */
@@ -66,46 +64,6 @@ public final class Polygon {
         return vertexCount >= 3 && Math.abs(area()) > 1e-12;
     }
 
-    /**
-     * 对每个顶点应用变换矩阵（4x4 或 3x2 矩阵），返回新 Polygon。
-     * @param matrix 长度为 6 的 float[] 或 double[]，表示仿射变换 [m00, m01, m02, m10, m11, m12]。
-     */
-    public Polygon transform(double[] matrix) {
-        if (matrix == null || matrix.length < 6) {
-            throw new IllegalArgumentException("matrix must be length >= 6");
-        }
-        double[] newCoords = new double[coords.length];
-        for (int i = 0; i < coords.length; i += 2) {
-            double x = coords[i];
-            double y = coords[i + 1];
-            newCoords[i] = matrix[0] * x + matrix[1] * y + matrix[2];
-            newCoords[i + 1] = matrix[3] * x + matrix[4] * y + matrix[5];
-        }
-        return new Polygon(newCoords);
-    }
-
-    /**
-     * 平移多边形。
-     */
-    public Polygon translate(double dx, double dy) {
-        return transform(new double[]{1, 0, dx, 0, 1, dy});
-    }
-
-    /**
-     * 缩放多边形（相对于原点）。
-     */
-    public Polygon scale(double sx, double sy) {
-        return transform(new double[]{sx, 0, 0, 0, sy, 0});
-    }
-
-    /**
-     * 旋转多边形（绕原点，弧度）。
-     */
-    public Polygon rotate(double angle) {
-        double cos = Math.cos(angle);
-        double sin = Math.sin(angle);
-        return transform(new double[]{cos, -sin, 0, sin, cos, 0});
-    }
 
     public Polygon clipToRect(double rectMinX, double rectMinY, double width, double height) {
         double maxX = rectMinX + width;
@@ -187,22 +145,6 @@ public final class Polygon {
         return vertexCount < 3;
     }
 
-    /**
-     * 判断多边形是否包含点（使用射线法，支持凸凹）。
-     */
-    public boolean containsPoint(double px, double py) {
-        boolean inside = false;
-        int n = vertexCount;
-        for (int i = 0, j = n - 1; i < n; j = i++) {
-            double xi = coords[2 * i], yi = coords[2 * i + 1];
-            double xj = coords[2 * j], yj = coords[2 * j + 1];
-            if ((yi > py) != (yj > py) &&
-                    px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-                inside = !inside;
-            }
-        }
-        return inside;
-    }
 
     // ---------- Object 方法 ----------
     @Override
