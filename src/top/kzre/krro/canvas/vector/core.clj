@@ -130,7 +130,7 @@
    {:keys [scale-x scale-y flatness antialias dirty-tiles]}]
   (doto (.config builder)
     (.canvas canvas)
-    (.size view-width view-height)
+    (.viewSize view-width view-height)
     (.dirtyTiles dirty-tiles)
     (.scale scale-x scale-y)
     (.antiAlias (keyword->antialias antialias))))
@@ -251,6 +251,7 @@
                               {:view-width  view-width
                                :view-height view-height
                                :dirty-tiles dirty-tiles})
+        ;; TODO image-size
         (p :blit-canvas
            (PixelBlitter/blit
              (.build

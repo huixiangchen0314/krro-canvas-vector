@@ -10,8 +10,8 @@ import java.util.Set;
  */
 public final class RenderContext {
     private final TiledCanvas destCanvas;  // 目标画布
-    private final int width;               // 画布宽度（像素）
-    private final int height;              // 画布高度（像素）
+    private final int viewWidth;               // 画布宽度（像素）
+    private final int viewHeight;              // 画布高度（像素）
     private final Set<Long> dirtyTiles;    // 需要更新的瓦片编码集合（可为 null 表示全部）
     private final AntiAliasStrategy antiAlias;
     private final double scaleX;
@@ -19,8 +19,8 @@ public final class RenderContext {
 
     private RenderContext(Builder builder) {
         this.destCanvas = builder.destCanvas;
-        this.width = builder.width;
-        this.height = builder.height;
+        this.viewWidth = builder.viewWidth;
+        this.viewHeight = builder.viewHeight;
         this.dirtyTiles = builder.dirtyTiles;
         this.scaleX = builder.scaleX;
         this.scaleY = builder.scaleY;
@@ -34,12 +34,12 @@ public final class RenderContext {
     public AntiAliasStrategy getAntiAlias() {
         return antiAlias;
     }
-    public int getWidth() {
-        return width;
+    public int getViewWidth() {
+        return viewWidth;
     }
 
-    public int getHeight() {
-        return height;
+    public int getViewHeight() {
+        return viewHeight;
     }
 
     public Set<Long> getDirtyTiles() {
@@ -64,8 +64,8 @@ public final class RenderContext {
         private double scaleY = 1.0;
         private AntiAliasStrategy antiAlias;
         private TiledCanvas destCanvas;
-        private int width;
-        private int height;
+        private int viewWidth;
+        private int viewHeight;
         private Set<Long> dirtyTiles;
 
 
@@ -75,13 +75,13 @@ public final class RenderContext {
             return this;
         }
 
-        public Builder width(int w) {
-            this.width = w;
+        public Builder viewWidth(int w) {
+            this.viewWidth = w;
             return this;
         }
 
-        public Builder height(int h) {
-            this.height = h;
+        public Builder viewHeight(int h) {
+            this.viewHeight = h;
             return this;
         }
 
@@ -106,7 +106,7 @@ public final class RenderContext {
             if (destCanvas == null) {
                 throw new IllegalArgumentException("destCanvas must not be null");
             }
-            if (width <= 0 || height <= 0) {
+            if (viewWidth <= 0 || viewHeight <= 0) {
                 throw new IllegalArgumentException("width and height must be positive");
             }
 

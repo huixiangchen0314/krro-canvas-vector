@@ -11,8 +11,8 @@ public final class CurveRenderer {
     public static void render(List<RenderableCurve> curves, RenderContext context) {
         long t0 = System.nanoTime();
 
-        int canvasW = context.getWidth();
-        int canvasH = context.getHeight();
+        int canvasW = context.getViewWidth();
+        int canvasH = context.getViewHeight();
         double scaleX = context.getScaleX();
         double scaleY = context.getScaleY();
 

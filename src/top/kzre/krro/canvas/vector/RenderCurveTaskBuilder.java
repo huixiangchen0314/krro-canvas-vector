@@ -91,8 +91,8 @@ public final class RenderCurveTaskBuilder {
 
     public final class RenderConfigurationConfigurer extends Configurer {
         private TiledCanvas canvas;
-        private int width = -1;
-        private int height = -1;
+        private int viewWidth = -1;
+        private int viewHeight = -1;
         private Set<Long> dirtyTiles;
         private AntiAlias aaMode;
         private double scaleX = 1.0;
@@ -109,9 +109,9 @@ public final class RenderCurveTaskBuilder {
             return this;
         }
 
-        public RenderConfigurationConfigurer size(int width, int height) {
-            this.width = width;
-            this.height = height;
+        public RenderConfigurationConfigurer viewSize(int width, int height) {
+            this.viewWidth = width;
+            this.viewHeight = height;
             return this;
         }
 
@@ -130,7 +130,7 @@ public final class RenderCurveTaskBuilder {
             if (canvas == null) {
                 throw new IllegalStateException("canvas must be set in global config");
             }
-            if (width <= 0 || height <= 0) {
+            if (viewWidth <= 0 || viewHeight <= 0) {
                 throw new IllegalStateException("width and height must be set");
             }
             if (dirtyTiles == null) {
@@ -142,8 +142,8 @@ public final class RenderCurveTaskBuilder {
             AntiAliasStrategy aaStrategy = createAAStrategy(aaMode);
             RenderCurveTaskBuilder.this.renderContext = RenderContext.builder()
                     .destCanvas(canvas)
-                    .width(width)
-                    .height(height)
+                    .viewWidth(viewWidth)
+                    .viewHeight(viewHeight)
                     .scale(scaleX, scaleY)
                     .dirtyTiles(dirtyTiles)
                     .antiAlias(aaStrategy)

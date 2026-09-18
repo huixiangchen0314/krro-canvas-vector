@@ -16,8 +16,8 @@ public final class EvenOddPolygonFiller extends AbstractPolygonFiller {
     public void fill(Polygon polygon, Long key, RenderContext context) {
         TiledCanvas canvas = context.getDestCanvas();
         int tileSize = canvas.getTileSize();
-        int canvasW  = context.getWidth();
-        int canvasH  = context.getHeight();
+        int canvasW  = context.getViewWidth();
+        int canvasH  = context.getViewHeight();
         AntiAliasStrategy aa = context.getAntiAlias();
 
         int tx = TiledCanvas.unpackTx(key);
