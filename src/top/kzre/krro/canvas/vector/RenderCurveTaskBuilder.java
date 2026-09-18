@@ -97,9 +97,15 @@ public final class RenderCurveTaskBuilder {
         private AntiAlias aaMode;
         private double scaleX = 1.0;
         private double scaleY = 1.0;
+        private double flatness = 0.25f;
 
         public RenderConfigurationConfigurer canvas(TiledCanvas canvas) {
             this.canvas = canvas;
+            return this;
+        }
+
+        public RenderConfigurationConfigurer flatness(double flatness) {
+            this.flatness = flatness;
             return this;
         }
 
@@ -144,6 +150,7 @@ public final class RenderCurveTaskBuilder {
                     .destCanvas(canvas)
                     .viewWidth(viewWidth)
                     .viewHeight(viewHeight)
+                    .flatness(flatness)
                     .scale(scaleX, scaleY)
                     .dirtyTiles(dirtyTiles)
                     .antiAlias(aaStrategy)
@@ -165,19 +172,13 @@ public final class RenderCurveTaskBuilder {
         private final Curve curve;
         private FillConfigurer fill;
         private StrokeConfigurer stroke;
-        // TODO flatness 移动到 RenderContext 作为全局数据
-        private double flatness = 0.25f;
+
         private double widthTolerance = 0.02f;
 
         private RenderableCurveConfigurer(Curve curve) {
             this.curve = curve;
         }
 
-        // 展平参数
-        public RenderableCurveConfigurer flatness(double flatness) {
-            this.flatness = flatness;
-            return this;
-        }
 
         public RenderableCurveConfigurer widthTolerance(double widthTolerance) {
             this.widthTolerance = widthTolerance;
@@ -226,10 +227,10 @@ public final class RenderCurveTaskBuilder {
             // 构建展平器
             CurveFlattener flattener;
             if (stroke != null && stroke.widthFunc != null) {
-                flattener = new AdaptiveFlattener(flatness, stroke.widthFunc, widthTolerance);
+                flattener = new AdaptiveFlattener(stroke.widthFunc, widthTolerance);
             } else {
                 float width = (stroke != null) ? stroke.width : 1.0f;
-                flattener = new AdaptiveFlattener(flatness, new FixedWidthFunction(width), widthTolerance);
+                flattener = new AdaptiveFlattener(new FixedWidthFunction(width), widthTolerance);
             }
 
             // 添加到曲线列表

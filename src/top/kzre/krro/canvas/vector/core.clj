@@ -118,7 +118,6 @@
   "配置单条曲线的 flatness、填充、描边。"
   [builder {:keys [bezier-curve style width-samples arc-params width-tolerance]} flatness]
   (let [curve-config (.curve builder bezier-curve)]
-    (.flatness curve-config (float flatness))
     (when width-tolerance
       (.widthTolerance curve-config (float width-tolerance)))
     (configure-fill! curve-config (:fill style))
@@ -130,6 +129,7 @@
    {:keys [scale-x scale-y flatness antialias dirty-tiles]}]
   (doto (.config builder)
     (.canvas canvas)
+    (.flatness flatness)
     (.viewSize view-width view-height)
     (.dirtyTiles dirty-tiles)
     (.scale scale-x scale-y)

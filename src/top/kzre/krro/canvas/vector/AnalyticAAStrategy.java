@@ -25,20 +25,9 @@ public final class AnalyticAAStrategy implements AntiAliasStrategy {
         // 如果全覆盖或几乎为零，直接处理
         int ix = (int) Math.floor(x);
         int iy = (int) Math.floor(y);
-        if (coverage >= 1.0) {
+        if (coverage >= (1.0 - 1e-6)) {
             canvas.setPixel(ix, iy, color);
         } else if (coverage > 1e-6) {
-            // 读取现有像素并混合
-            float[] dest = new float[4];
-            canvas.getPixel(ix, iy, dest);
-            float alpha = color[3] * (float) coverage;
-            float invAlpha = 1.0f - alpha;
-            dest[0] = color[0] * alpha + dest[0] * invAlpha;
-            dest[1] = color[1] * alpha + dest[1] * invAlpha;
-            dest[2] = color[2] * alpha + dest[2] * invAlpha;
-            dest[3] = alpha + dest[3] * invAlpha;
-            canvas.setPixel(ix, iy, dest);
-
             float[] colorCopy = pool4f.acquire();
             try {
                 colorCopy[0] = color[0];

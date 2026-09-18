@@ -55,7 +55,7 @@ public final class CurveRenderer {
                 PolygonFiller filler = style.getFiller();
                 for (Path path : paths) {
                     long s3 = System.nanoTime();
-                    Path simplified = path.simplify(0.5f * scaleX * scaleY);
+                    Path simplified = path.simplify(0.5f);
                     tSimplify += System.nanoTime() - s3;
 
                     long s4 = System.nanoTime();
