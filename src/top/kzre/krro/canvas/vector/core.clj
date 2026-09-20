@@ -1,10 +1,15 @@
 (ns top.kzre.krro.canvas.vector.core
-  "矢量图层统一入口。所有公开 API 从子 ns re-export。"
+  "矢量图层统一入口。
+   类型无关的操作直接从各 ns re-export；
+   类型相关的操作（变换 / 插点 / 挤出）在本 ns 按 :path-type 分派。
+   当前仅支持 :bezier——catmull-rom 分派时抛异常。"
   (:require
     [top.kzre.krro.canvas.vector.layer]
     [top.kzre.krro.canvas.vector.path]
     [top.kzre.krro.canvas.vector.anchor]
-    [top.kzre.krro.canvas.vector.edit]
+    [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
+    [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
+    [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
     [top.kzre.krro.canvas.vector.composite]
     [top.kzre.krro.core.util.re-export :refer [re-export]]))
 
@@ -16,8 +21,7 @@
   [top.kzre.krro.canvas.vector.layer
    :refer
    [paths path-order fresh-path-id
-    save-path delete-path make-vector-layer
-    ]])
+    save-path delete-path make-vector-layer]])
 
 ;; ═══════════════════════════════════════
 ;; Path 结构 / 宽度 / 几何 / 脏区域
@@ -34,7 +38,7 @@
     valid-path?]])
 
 ;; ═══════════════════════════════════════
-;; Anchor 类型 / 操作
+;; Anchor 类型 / 类型无关操作
 ;; ═══════════════════════════════════════
 
 (re-export
@@ -44,16 +48,103 @@
     ->AnchorTranslation map->AnchorTranslation
     path-of-anchor
     all-anchors anchor-point
-    end-anchor?
+    anchor-prev anchor-next anchor-seg-idxs
+    end-anchor? active-anchor-after-extrude
     anchors-centroid
-    translate-anchor translate-anchors apply-translations
-
     anchor-tiles]])
 
-(re-export
-  [top.kzre.krro.canvas.vector.edit
-   :refer
-   [active-anchor-after-extrude extrude-anchor]])
+
+;; ═══════════════════════════════════════
+;; 分派 helper
+;; ═══════════════════════════════════════
+
+(defn- path-type-of-anchors
+  "从 anchors 推断 path-type。
+   全为空、或类型混合时抛异常。"
+  [paths anchors]
+  (when (empty? anchors)
+    (throw (ex-info "no anchors" {})))
+  (let [types (into #{} (map #(get-in paths [(:path-id %) :path-type])) anchors)]
+    (when (not= 1 (count types))
+      (throw (ex-info "anchors must belong to paths of a single type"
+                      {:types types})))
+    (first types)))
+
+(defn- require-bezier
+  "catmull-rom 暂不支持——分派时统一抛异常。"
+  [op path-type]
+  (when-not (= :bezier path-type)
+    (throw (ex-info (str op " not yet supported for path type " path-type)
+                    {:op op :path-type path-type}))))
+
+;; ═══════════════════════════════════════
+;; 变换（按路径类型分派）
+;; ═══════════════════════════════════════
+
+(defn translate-anchor
+  "对单个锚点施加偏移。返回新 paths。"
+  [paths anchor dx dy]
+  (require-bezier "translate-anchor" (path-type-of-anchors paths [anchor]))
+  (bezier.transform/translate-anchor paths anchor dx dy))
+
+(defn translate-anchors
+  "对一组锚点施加统一偏移。返回新 paths。"
+  [paths anchors dx dy]
+  (require-bezier "translate-anchors" (path-type-of-anchors paths anchors))
+  (bezier.transform/translate-anchors paths anchors dx dy))
+
+(defn apply-translations
+  "将一批独立的锚点偏移应用到 paths。
+   translations 为 [AnchorTranslation ...]。返回新 paths。"
+  [paths translations]
+  (require-bezier "apply-translations"
+                  (path-type-of-anchors paths (mapv :anchor translations)))
+  (bezier.transform/apply-translations paths translations))
+
+(defn rotate-anchors
+  "以 center 为中心旋转指定锚点。angle 为弧度。返回新 paths。"
+  [paths anchors center angle]
+  (require-bezier "rotate-anchors" (path-type-of-anchors paths anchors))
+  (bezier.transform/rotate-anchors paths anchors center angle))
+
+(defn scale-anchors
+  "以 center 为中心缩放指定锚点。
+   sx / sy 为缩放因子。返回新 paths。"
+  [paths anchors center sx sy]
+  (require-bezier "scale-anchors" (path-type-of-anchors paths anchors))
+  (bezier.transform/scale-anchors paths anchors center sx sy))
+
+(defn mirror-anchors
+  "以 axis 为轴镜像指定锚点。
+   axis 为 {:point {:x :y} :direction {:x :y}}。返回新 paths。"
+  [paths anchors axis]
+  (require-bezier "mirror-anchors" (path-type-of-anchors paths anchors))
+  (bezier.transform/mirror-anchors paths anchors axis))
+
+(defn skew-anchors
+  "以 center 为中心斜切指定锚点。
+   kx / ky 为斜切系数。返回新 paths。"
+  [paths anchors center kx ky]
+  (require-bezier "skew-anchors" (path-type-of-anchors paths anchors))
+  (bezier.transform/skew-anchors paths anchors center kx ky))
+
+;; ═══════════════════════════════════════
+;; 拓扑编辑（按路径类型分派）
+;; ═══════════════════════════════════════
+
+(defn insert-anchor
+  "在指定全局归一化参数 t 处插入锚点。
+   返回 {:paths new-paths :anchor new-anchor}。"
+  [paths path-id t]
+  (require-bezier "insert-anchor" (get-in paths [path-id :path-type]))
+  (bezier.insert/insert-anchor paths path-id t))
+
+(defn extrude-anchor
+  "若锚点是路径端点，则在该端挤出一点。
+   返回 {:paths new-paths :anchor new-anchor}，非端点返回 nil。"
+  [paths anchor point]
+  (require-bezier "extrude-anchor" (get-in paths [(:path-id anchor) :path-type]))
+  (bezier.extrude/extrude-anchor paths anchor point))
 
 ;; ═══════════════════════════════════════
 ;; 渲染

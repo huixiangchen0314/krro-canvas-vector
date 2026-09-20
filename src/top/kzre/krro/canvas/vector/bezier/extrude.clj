@@ -1,45 +1,41 @@
-(ns top.kzre.krro.canvas.vector.edit
-  "路径拓扑编辑：插点、删点、挤出、焊接、切断。
-   所有操作改变控制点数量——需要维护 t-params / width-samples / arc-params。"
+(ns top.kzre.krro.canvas.vector.bezier.extrude
+  "锚点挤出：在路径端点派生一个新锚点。
+   改变控制点数量——维护 t-params / width-samples / arc-params。
+   仅支持 :bezier 路径。"
   (:require
     [top.kzre.krro.canvas.vector.path   :as path]
-    [top.kzre.krro.canvas.vector.curve  :as curve]
     [top.kzre.krro.canvas.vector.anchor :as anchor])
   (:import
-    (top.kzre.curve.bezier2d
-      Curve
-      CurveExtrusionUtils)
-    (top.kzre.krro.canvas.vector.anchor Anchor)))
+    (top.kzre.krro.canvas.vector.anchor Anchor)
+    (top.kzre.krro.canvas.vector TParamsUtils)))
 
 ;; ═══════════════════════════════════════
-;; 挤出
+;; 内部：曲线拓扑（纯 EDN）
 ;; ═══════════════════════════════════════
 
-(defn- extrude-curve
-  "执行曲线挤出，返回 {:curve :t-params}。"
-  [^Curve old-curve old-t-params point is-start?]
-  (let [new-curve    (Curve.)
-        pair         (curve/edn->pair point)
-        new-t-params (if is-start?
-                       (CurveExtrusionUtils/extrudeHead
-                         old-curve (double-array old-t-params) pair new-curve)
-                       (CurveExtrusionUtils/extrudeTail
-                         old-curve (double-array old-t-params) pair new-curve))]
-    {:curve    new-curve
-     :t-params (vec new-t-params)}))
+(defn- extrude-curve-edn
+  "在曲线 EDN 的头部/尾部插入一个新控制点（手柄为零）。
+   返回新 curve EDN。"
+  [curve-edn point is-start?]
+  (let [new-cp {:x   (double (:x point))
+                :y   (double (:y point))
+                :dx1 0.0 :dy1 0.0
+                :dx2 0.0 :dy2 0.0
+                :g1  false}]
+    (update curve-edn :points
+            (fn [pts]
+              (if is-start?
+                (into [new-cp] pts)
+                (conj (vec pts) new-cp))))))
 
-(defn active-anchor-after-extrude
-  "挤出后原锚点的新索引：起点挤出索引 0 → 1；终点挤出索引不变。"
-  [^Anchor anchor is-start?]
-  {:pre [(some? anchor)
-         (boolean? is-start?)]}
-  (if is-start?
-    (anchor/->Anchor (:path-id anchor) 1)
-    anchor))
+;; ═══════════════════════════════════════
+;; 公开 API
+;; ═══════════════════════════════════════
+
 
 (defn extrude-anchor
   "若锚点是路径端点，则在该端挤出一点。
-   返回 {:paths new-paths :anchor updated-anchor :new-anchor new-anchor}。
+   返回 {:paths new-paths :new-anchor new-anchor}。
    非端点返回 nil。仅支持 :bezier 路径。
 
    paths 中不存在该 path-id 时抛异常——这是数据错误，
@@ -62,14 +58,11 @@
                         {:path-id path-id :path-type (:path-type p)})))
       (let [idx            (:point-idx anchor)
             is-start?      (zero? idx)
+            curve-edn      (:curve p)
+            old-seg-count  (dec (count (:points curve-edn)))
+            new-curve-edn  (extrude-curve-edn curve-edn point is-start?)
+            new-num-points (count (:points new-curve-edn))
             width-type     (path/path-width-type p)
-            old-curve      (curve/edn->curve (:curve p))
-            old-t-params   (or (:t-params p)
-                               (path/uniform-t-params (path/path-point-count p)))
-            {:keys [curve t-params]}
-            (extrude-curve old-curve old-t-params point is-start?)
-            new-num-points (count (.getPoints curve))
-            new-curve-edn  (curve/curve->edn curve)
             new-path
             (case width-type
               :fixed
@@ -82,31 +75,36 @@
                     w           (if is-start? (first old-samples) (last old-samples))
                     new-samples (if is-start?
                                   (into [w] old-samples)
-                                  (into old-samples [w]))]
+                                  (conj (vec old-samples) w))]
                 (-> p
                     (assoc :curve new-curve-edn)
                     (assoc :width-samples new-samples)
                     (path/ensure-width-type* :point-width :compute-arc? true)))
 
               :t-width
-              (let [old-samples (:width-samples p)
+              (let [old-tp      (or (:t-params p)
+                                    (path/uniform-t-params (count (:points curve-edn))))
+                    new-tp      (vec (if is-start?
+                                       (TParamsUtils/extrudeHead
+                                         (double-array old-tp) old-seg-count)
+                                       (TParamsUtils/extrudeTail
+                                         (double-array old-tp) old-seg-count)))
+                    old-samples (:width-samples p)
                     w           (if is-start? (first old-samples) (last old-samples))
                     new-samples (if is-start?
                                   (into [w] old-samples)
-                                  (into old-samples [w]))]
+                                  (conj (vec old-samples) w))]
                 (-> p
                     (assoc :curve new-curve-edn)
                     (assoc :width-samples new-samples)
-                    (assoc :t-params t-params)
+                    (assoc :t-params new-tp)
                     (path/ensure-width-type* :t-width :compute-arc? true)))
 
               :curve
               (throw (ex-info "Curve width type not supported for extrusion"
                               {:path-id path-id :width-type width-type})))
-            new-anchor     (if is-start?
-                             (anchor/->Anchor path-id 0)
-                             (anchor/->Anchor path-id (dec new-num-points)))
-            updated-anchor (active-anchor-after-extrude anchor is-start?)]
+            new-anchor (if is-start?
+                         (anchor/->Anchor path-id 0)
+                         (anchor/->Anchor path-id (dec new-num-points)))]
         {:paths      (assoc paths path-id new-path)
-         :anchor     updated-anchor
-         :new-anchor new-anchor}))))
+         :anchor new-anchor}))))
