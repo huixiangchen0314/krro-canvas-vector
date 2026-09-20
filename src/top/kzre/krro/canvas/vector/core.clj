@@ -6,19 +6,20 @@
    [top.kzre.krro.canvas.core.layer.util :as lu]
    [top.kzre.krro.core.util.promise :as promise]
    [top.kzre.krro.curve.bezier2d.core :as bezier]
-   [top.kzre.krro.curve.catmullrom2d.core :as cr])
+   [top.kzre.krro.curve.catmullrom2d.core :as cr]
+   [clojure.set :as set])
   (:import
    (java.util Collection UUID)
-   (top.kzre.curve.bezier2d Bezier2D)
-   (top.kzre.krro.canvas.core.layer LayerUtils PixelBlitter PixelBlitter$BlitterRequest)
+   (top.kzre.curve.bezier2d Bezier2D Curve)
+   (top.kzre.krro.canvas.core.layer PixelBlitter PixelBlitter$BlitterRequest)
    (top.kzre.krro.canvas.vector
-    AntiAlias
-    ArcLengthSampleWidthFunc
-    Cap
-    FillRule
-    FixedWidthFunction
-    Join
-    RenderCurveTaskBuilder)
+     AntiAlias
+     ArcLengthSampleWidthFunc
+     Cap
+     CurveClipper FillRule
+     FixedWidthFunction
+     Join
+     RenderCurveTaskBuilder)
    (top.kzre.krro.util.math KMath)
    (top.kzre.krro.util.tile TiledCanvas)))
 
@@ -45,6 +46,88 @@
      :path-order   []
      :antialias   antialias}
     (select-keys opts [:x :y :scale-x :scale-y :rotation :transform])))
+
+
+(defn paths
+  "返回图层的路径映射 {path-id path-data}。"
+  [layer]
+  (:paths layer {}))
+
+(defn path-order
+  "返回图层的路径顺序（向量）。"
+  [layer]
+  (:path-order layer []))
+
+(defn path-curve
+  "返回路径的曲线描述"
+  [path]
+  (case (:path-type path)
+    :bezier      (:bezier-curve path)
+    :catmull-rom (cr/edn->crcurve (:cr-curve path))
+    nil))
+
+(defn path->curve
+  "从路径描述提取 Bezier 曲线。未知类型返回 nil。
+  错误依赖应用层检测"
+  ^Curve [path]
+  (case (:path-type path)
+    :bezier      (bezier/edn->curve (:bezier-curve path))
+    :catmull-rom (-> (cr/edn->crcurve (:cr-curve path))
+                     (.getBezierCurve))
+    nil))
+
+(defn max-path-width
+  "如果路径有宽度采样，返回路径的最大宽度采样，否则返回 stroke 样式宽度."
+  [path]
+  (let [stroke-width (get-in path [:style :stroke :width] 0)
+        width-samples (:width-samples path)]
+    (cond
+      (seq width-samples) (apply max width-samples)
+      :else stroke-width)))
+
+(defn path-tiles
+  "返回路径覆盖的瓦片"
+  [path tile-size]
+  (when-let [c (path->curve path)]
+    (let [half-width (* (max-path-width path) 0.5)]
+      (set (CurveClipper/curveTiles c tile-size half-width)))))
+
+(defn layer-tiles
+  "返回所有路径覆盖的瓦片"
+  [layer tile-size]
+  (reduce
+    (fn [acc p]
+      (into acc (path-tiles p tile-size)))
+    #{}
+    (:paths layer)))
+
+
+(defn fresh-path-id []
+  (keyword (str "path-" (random-uuid))))
+
+(defn- ensure-order-entry [layer path-id]
+  (update layer :path-order
+          (fn [order]
+            (if (some #{path-id} order)
+              order
+              (conj order path-id)))))
+
+(defn save-path
+  "新增或更新路径。新增时追加到 :path-order 尾部。
+   对同一 path-id 重复调用是幂等的（不会在 :path-order 里产生重复）。"
+  ([layer path] (save-path layer (fresh-path-id) path))
+  ([layer path-id path]
+   {:pre [(some? path-id)]}
+   (-> layer
+       (update :paths assoc path-id path)
+       (ensure-order-entry path-id))))
+
+(defn delete-path [layer path-id]
+  (let [excluded #{path-id}]
+    (-> layer
+        (update :paths dissoc path-id)
+        (update :path-order (fn [order] (into [] (remove excluded) order))))))
+
 
 ;; ============================================================================
 ;; 辅助转换函数
@@ -179,14 +262,7 @@
       nil)))
 
 
-(defn- curve-of
-  "从路径描述提取 Bezier 曲线。未知类型返回 nil。"
-  [path]
-  (case (:path-type path)
-    :bezier      (bezier/edn->curve (:bezier-curve path))
-    :catmull-rom (-> (cr/edn->crcurve (:cr-curve path))
-                     (.getBezierCurve))
-    nil))
+
 
 (defn- transform-info
   "解析图层变换矩阵，返回渲染所需的缩放与变换信息。"
@@ -204,7 +280,7 @@
   (into []
         (keep (fn [path-id]
                 (when-let [path (get (:paths layer) path-id)]
-                  (when-let [curve (curve-of path)]
+                  (when-let [curve (path->curve path)]
                     (assoc path :bezier-curve
                                 (if xform
                                   (Bezier2D/transform curve xform)
@@ -245,7 +321,8 @@
     :or   {subpixel? false}}]
   (profile
     {:id :vector/render}
-    (let [tmp-canvas (TiledCanvas. (.getTileSize canvas))]
+    (let [tile-size (.getTileSize canvas)
+          tmp-canvas (TiledCanvas. tile-size)]
       (try
         (render-to-canvas! layer tmp-canvas
                               {:view-width  view-width
