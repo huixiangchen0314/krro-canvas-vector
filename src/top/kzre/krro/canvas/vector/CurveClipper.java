@@ -78,6 +78,35 @@ public final class CurveClipper {
     }
 
     /**
+     * 计算锚点相邻段经过的瓦片集合（含描边宽度扩展）。
+     * 相邻段 = 锚点两侧的段：
+     *   左段：idx-1 → idx（闭合时首点左段为末段）
+     *   右段：idx → idx+1（idx == segCount 时不存在）
+     */
+    public static Set<Long> anchorTiles(Curve curve, int idx, int tileSize, double halfWidth) {
+        Set<Long> tiles = new HashSet<>();
+        if (curve == null || curve.getPoints().isEmpty()) return tiles;
+
+        int segCount = curve.getSegmentCount();
+        if (segCount <= 0) return tiles;
+
+        boolean closed = curve.isClosed();
+
+        // 左段
+        if (closed || idx > 0) {
+            int leftIdx = (idx - 1 + segCount) % segCount;
+            collectSegmentTiles(curve.getSegment(leftIdx), tileSize, halfWidth, tiles, 0);
+        }
+
+        // 右段
+        if (idx < segCount) {
+            collectSegmentTiles(curve.getSegment(idx), tileSize, halfWidth, tiles, 0);
+        }
+
+        return tiles;
+    }
+
+    /**
      * 按 AABB 裁剪曲线——把可见段收集到 out。
      * 半宽用于可见性判断，避免「中心线在视口外但描边可见」被误剔除。
      */
