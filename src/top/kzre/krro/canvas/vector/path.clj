@@ -193,27 +193,6 @@
   {:pre [(valid-path? path)]}
   (/ (max-path-width path) 2.0))
 
-;; ═══════════════════════════════════════
-;; 纯 EDN 平移
-;; ═══════════════════════════════════════
-
-(defn translate-points
-  "平移曲线 EDN 中指定索引的控制点。
-   纯 EDN 操作，不构造 Java 对象。"
-  [curve-edn dx dy idxs]
-  {:pre [(map? curve-edn)
-         (number? dx) (number? dy)
-         (sequential? idxs)
-         (every? int? idxs)]}
-  (let [idx-set (set idxs)]
-    (update curve-edn :points
-            (fn [points]
-              (mapv (fn [i p]
-                      (if (contains? idx-set i)
-                        (assoc p :x (+ (:x p) dx) :y (+ (:y p) dy))
-                        p))
-                    (range)
-                    points)))))
 
 ;; ═══════════════════════════════════════
 ;; Tiles

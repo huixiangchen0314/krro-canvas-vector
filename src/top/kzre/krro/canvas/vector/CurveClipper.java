@@ -42,6 +42,27 @@ public final class CurveClipper {
     }
 
     /**
+     * 计算指定段索引集合经过的瓦片集合（含描边宽度扩展）。
+     * segIdxs 为空时返回空集合；索引越界抛 IndexOutOfBoundsException。
+     */
+    public static Set<Long> segTilesForIdxs(Curve curve, int[] segIdxs,
+                                            int tileSize, double halfWidth) {
+        Set<Long> tiles = new HashSet<>();
+        if (curve == null || curve.getPoints().isEmpty() || segIdxs == null) {
+            return tiles;
+        }
+        int segCount = curve.getSegmentCount();
+        for (int idx : segIdxs) {
+            if (idx < 0 || idx >= segCount) {
+                throw new IndexOutOfBoundsException(
+                        "seg idx " + idx + " out of [0, " + segCount + ")");
+            }
+            collectSegmentTiles(curve.getSegment(idx), tileSize, halfWidth, tiles, 0);
+        }
+        return tiles;
+    }
+
+    /**
      * 递归细分线段，直到其 AABB（按半宽扩展后）落在单个瓦片内或达到深度上限。
      */
     private static void collectSegmentTiles(Segment seg, int tileSize, double halfWidth,

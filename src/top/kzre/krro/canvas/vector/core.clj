@@ -4,6 +4,7 @@
     [top.kzre.krro.canvas.vector.layer]
     [top.kzre.krro.canvas.vector.path]
     [top.kzre.krro.canvas.vector.anchor]
+    [top.kzre.krro.canvas.vector.edit]
     [top.kzre.krro.canvas.vector.composite]
     [top.kzre.krro.core.util.re-export :refer [re-export]]))
 
@@ -16,7 +17,7 @@
    :refer
    [paths path-order fresh-path-id
     save-path delete-path make-vector-layer
-    valid-path?]])
+    ]])
 
 ;; ═══════════════════════════════════════
 ;; Path 结构 / 宽度 / 几何 / 脏区域
@@ -29,7 +30,8 @@
     path-width-type max-path-width max-path-half-width
     path-aabb seg-aabb
     path-tiles seg-tiles
-    uniform-t-params]])
+    uniform-t-params
+    valid-path?]])
 
 ;; ═══════════════════════════════════════
 ;; Anchor 类型 / 操作
@@ -45,8 +47,13 @@
     end-anchor?
     anchors-centroid
     translate-anchor translate-anchors apply-translations
-    active-anchor-after-extrude extrude-anchor
+
     anchor-tiles]])
+
+(re-export
+  [top.kzre.krro.canvas.vector.edit
+   :refer
+   [active-anchor-after-extrude extrude-anchor]])
 
 ;; ═══════════════════════════════════════
 ;; 渲染
