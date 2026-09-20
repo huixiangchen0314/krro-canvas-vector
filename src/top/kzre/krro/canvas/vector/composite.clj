@@ -92,8 +92,8 @@
 
 (defn- configure-curve!
   "配置单条曲线的 flatness、填充、描边。"
-  [builder {:keys [bezier-curve style width-samples arc-params width-tolerance]} flatness]
-  (let [curve-config (.curve builder bezier-curve)]
+  [builder {:keys [curve style width-samples arc-params width-tolerance]} ]
+  (let [curve-config (.curve builder curve)]
     (when width-tolerance
       (.widthTolerance curve-config (float width-tolerance)))
     (configure-fill! curve-config (:fill style))
@@ -126,7 +126,7 @@
                          :antialias   antialias
                          :dirty-tiles dirty-tiles})
     (doseq [path paths]
-      (configure-curve! builder path flatness))
+      (configure-curve! builder path ))
     (.build builder)))
 
 (defn ^:deprecated render-paths!
@@ -141,7 +141,7 @@
     (let [curves-config
           (mapv
             (fn [c]
-              {:bezier-curve c
+              {:curve c
                :flatness flatness
                :fill fill
                :stroke stroke})
@@ -168,16 +168,23 @@
      :xform     (when-not identity? (float-array transform))}))
 
 (defn- build-layer-curves
-  "遍历 path-order，构造已应用图层变换的曲线集合。"
+  "遍历 path-order，构造已应用图层变换的曲线集合。
+
+   前置条件：:path-order 里的每个 path-id 都能在 :paths 中找到对应 path。
+   违反时抛异常——数据不一致是调用方的 bug，不应静默跳过。"
   [layer xform]
-  (into []
-        (keep (fn [path-id]
-                (when-let [path (get (:paths layer) path-id)]
-                  (when-let [curve (vector.path/path->curve path)]
-                    (assoc path :bezier-curve
-                                (if xform
-                                  (Bezier2D/transform curve xform)
-                                  curve))))))
+  (mapv (fn [path-id]
+          (let [path (get (:paths layer) path-id)]
+            (when-not path
+              (throw (ex-info "path-order references missing path"
+                              {:path-id        path-id
+                               :path-order     (:path-order layer)
+                               :available-ids  (keys (:paths layer))})))
+            (let [curve (vector.path/path->curve path)]
+              (assoc path :curve
+                          (if xform
+                            (Bezier2D/transform curve xform)
+                            curve)))))
         (:path-order layer)))
 
 
