@@ -5,13 +5,17 @@
    当前仅支持 :bezier——catmull-rom 分派时抛异常。"
   (:require
    [top.kzre.krro.canvas.vector.anchor]
+   [top.kzre.krro.canvas.vector.bezier.closure :as bezier.closure]
+   [top.kzre.krro.canvas.vector.bezier.continuity :as bezier.continuity]
    [top.kzre.krro.canvas.vector.bezier.delete :as bezier.delete]
    [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
+   [top.kzre.krro.canvas.vector.bezier.handle :as bezier.handle]
    [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
    [top.kzre.krro.canvas.vector.bezier.join :as bezier.join]
    [top.kzre.krro.canvas.vector.bezier.reverse :as bezier.reverse]
    [top.kzre.krro.canvas.vector.bezier.split :as bezier.split]
    [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
+   [top.kzre.krro.canvas.vector.bezier.weld :as bezier.weld]
    [top.kzre.krro.canvas.vector.composite]
    [top.kzre.krro.canvas.vector.layer]
    [top.kzre.krro.canvas.vector.path]
@@ -178,6 +182,64 @@
   [path]
   (require-bezier "reverse-path" (:path-type path))
   (bezier.reverse/reverse-path path))
+
+(defn weld-anchors
+  "焊接两个锚点。返回 {:paths new-paths :weld-anchor new-anchor}。
+   同路径：相邻；跨路径：均为端点且路径非闭合。"
+  [paths anchor-active anchor-passive]
+  (require-bezier "weld-anchors"
+                  (get-in paths [(:path-id anchor-active) :path-type]))
+  (require-bezier "weld-anchors"
+                  (get-in paths [(:path-id anchor-passive) :path-type]))
+  (bezier.weld/weld-anchors paths anchor-active anchor-passive))
+
+(defn close-path [path]
+  (require-bezier "close-path" (:path-type path))
+  (bezier.closure/close-path path))
+
+(defn open-path [path]
+  (require-bezier "open-path" (:path-type path))
+  (bezier.closure/open-path path))
+
+(defn set-handle-in [path idx dx dy]
+  (require-bezier "set-handle-in" (:path-type path))
+  (bezier.handle/set-handle-in path idx dx dy))
+
+(defn set-handle-out [path idx dx dy]
+  (require-bezier "set-handle-out" (:path-type path))
+  (bezier.handle/set-handle-out path idx dx dy))
+
+(defn clear-handles [path idx]
+  (require-bezier "clear-handles" (:path-type path))
+  (bezier.handle/clear-handles path idx))
+
+(defn mirror-in-from-out [path idx]
+  (require-bezier "mirror-in-from-out" (:path-type path))
+  (bezier.handle/mirror-in-from-out path idx))
+
+(defn mirror-out-from-in [path idx]
+  (require-bezier "mirror-out-from-in" (:path-type path))
+  (bezier.handle/mirror-out-from-in path idx))
+
+(defn move-handle-in [path idx dx dy]
+  (require-bezier "move-handle-in" (:path-type path))
+  (bezier.handle/move-handle-in path idx dx dy))
+
+(defn move-handle-out [path idx dx dy]
+  (require-bezier "move-handle-out" (:path-type path))
+  (bezier.handle/move-handle-out path idx dx dy))
+
+(defn set-continuity
+  "设置锚点 idx 的连续性。返回新 path。不触发约束求解。"
+  [path idx continuity]
+  (require-bezier "set-continuity" (:path-type path))
+  (bezier.continuity/set-continuity path idx continuity))
+
+(defn apply-constraints
+  "对整条曲线应用所有锚点的连续性约束。返回新 path。"
+  [path]
+  (require-bezier "apply-constraints" (:path-type path))
+  (bezier.continuity/apply-constraints path))
 
 ;; ═══════════════════════════════════════
 ;; 渲染
