@@ -158,3 +158,16 @@
                                 (subvec samples (inc idx)))))
 
     :t-width     samples))
+
+
+(defn reverse-samples
+  "反转 width-samples 顺序。
+
+   :fixed       —— 返回原值（无采样）
+   :point-width —— 反转（采样跟随控制点顺序）
+   :t-width     —— 反转（采样跟随 t-params 的反转顺序）"
+  [width-type samples]
+  (if (= :fixed width-type)
+    samples
+    (when (seq samples)
+      (vec (reverse samples)))))

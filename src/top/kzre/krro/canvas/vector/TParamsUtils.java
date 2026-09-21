@@ -375,19 +375,27 @@ public final class TParamsUtils {
                 leftTParams.length - 1, 0);
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // 反向
-    // ═══════════════════════════════════════════════════════════
-
     /**
      * 曲线反向后的 t-params 重映射。
-     * <p>归一化 t 的反向：{@code t → 1 - t}。由于数组单调不减，
-     * 反向操作相当于「先 map 到 1-t 再整体反转」，结果与「不处理」等价
-     * （见注释）。
-     * <p>本方法返回输入数组的副本——调用方仍应显式调用以表明意图。
+     *
+     * <p>每个采样点的位置从 {@code t} 变为 {@code 1-t}；同时数组顺序反转，
+     * 结果仍保持升序。
+     *
+     * <p>公式：{@code new_t[i] = 1 - old_t[n-1-i]}。
+     *
+     * <p><b>特例</b>：均匀分布的 t-params（{@code [0, 1/(n-1), ..., 1]}）
+     * 反向后不变——因为值对称。
+     *
+     * @param oldTParams 旧归一化 t 参数（升序）
+     * @return 新 t 参数数组，长度 = oldTParams.length，升序
      */
     public static double[] reverse(double[] oldTParams) {
-        return oldTParams.clone();
+        int n = oldTParams.length;
+        double[] out = new double[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = 1.0 - oldTParams[n - 1 - i];
+        }
+        return out;
     }
 
     // ═══════════════════════════════════════════════════════════

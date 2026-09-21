@@ -5,9 +5,12 @@
    当前仅支持 :bezier——catmull-rom 分派时抛异常。"
   (:require
    [top.kzre.krro.canvas.vector.anchor]
+   [top.kzre.krro.canvas.vector.bezier.delete :as bezier.delete]
    [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
    [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
    [top.kzre.krro.canvas.vector.bezier.join :as bezier.join]
+   [top.kzre.krro.canvas.vector.bezier.reverse :as bezier.reverse]
+   [top.kzre.krro.canvas.vector.bezier.split :as bezier.split]
    [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
    [top.kzre.krro.canvas.vector.composite]
    [top.kzre.krro.canvas.vector.layer]
@@ -140,6 +143,15 @@
   (require-bezier "insert-anchor" (get-in paths [path-id :path-type]))
   (bezier.insert/insert-anchor paths path-id t))
 
+
+(defn delete-anchor
+  "删除锚点。返回 {:paths new-paths :deleted-idx idx}。
+   允许退化到 1 个点的路径。要求 :bezier 非闭合。"
+  [paths anchor]
+  (require-bezier "delete-anchor"
+                  (get-in paths [(:path-id anchor) :path-type]))
+  (bezier.delete/delete-anchor paths anchor))
+
 (defn extrude-anchor
   "若锚点是路径端点，则在该端挤出一点。
    返回 {:paths new-paths :anchor new-anchor}，非端点返回 nil。"
@@ -154,6 +166,18 @@
   (require-bezier "join-paths" (:path-type left))
   (require-bezier "join-paths" (:path-type right))
   (bezier.join/join-paths left right))
+(defn split-at-anchor
+  "在锚点处切分曲线为 [left-path right-path]。
+   要求 :bezier 非闭合路径，idx ∈ [1, n-2]。"
+  [path idx]
+  (require-bezier "split-at-anchor" (:path-type path))
+  (bezier.split/split-at-anchor path idx))
+
+(defn reverse-path
+  "反向曲线。返回新 path。要求 :bezier。"
+  [path]
+  (require-bezier "reverse-path" (:path-type path))
+  (bezier.reverse/reverse-path path))
 
 ;; ═══════════════════════════════════════
 ;; 渲染
