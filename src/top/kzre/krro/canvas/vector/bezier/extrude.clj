@@ -52,7 +52,7 @@
       (throw (ex-info "path not found for anchor"
                       {:path-id       path-id
                        :available-ids (keys paths)})))
-    (when (anchor/end-anchor? p anchor)
+    (when (anchor/end-anchor? paths anchor)
       (when-not (= :bezier (:path-type p))
         (throw (ex-info "extrude-anchor only supports :bezier paths"
                         {:path-id path-id :path-type (:path-type p)})))

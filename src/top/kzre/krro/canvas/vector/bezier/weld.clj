@@ -27,8 +27,8 @@
   (:import
     (top.kzre.curve.bezier2d Bezier2D)
     (top.kzre.krro.canvas.vector.anchor Anchor)
-    (top.kzre.krro.canvas.vector TParamsUtils)
-    (top.kzre.krro.canvas.vector.TParamsUtils DeleteResult JoinResult)))
+    (top.kzre.krro.canvas.vector TParamsUtils TParamsUtils$DeleteResult TParamsUtils$JoinResult)
+    ))
 
 ;; ═══════════════════════════════════════
 ;; 内部：索引计算
@@ -69,7 +69,7 @@
                   :width-samples (width/delete-sample :point-width
                                                       old-samples del-idx)}
 
-    :t-width     (let [^DeleteResult dr (when (seq old-tp)
+    :t-width     (let [^TParamsUtils$DeleteResult dr (when (seq old-tp)
                                           (TParamsUtils/deleteSegmentAt
                                             (double-array old-tp) seg-count del-seg))
                        new-tp   (when dr (vec (.-tParams dr)))
@@ -157,10 +157,10 @@
         (throw (ex-info "cross-path weld requires non-closed paths"
                         {:path-id id}))))
 
-    (when-not (anchor/end-anchor? pa anchor-active)
+    (when-not (anchor/end-anchor? paths anchor-active)
       (throw (ex-info "anchor-active must be endpoint of its path"
                       {:path-id aid :idx (:point-idx anchor-active)})))
-    (when-not (anchor/end-anchor? pb anchor-passive)
+    (when-not (anchor/end-anchor? paths anchor-passive)
       (throw (ex-info "anchor-passive must be endpoint of its path"
                       {:path-id pid :idx (:point-idx anchor-passive)})))
 
@@ -193,7 +193,7 @@
                           true)   ; active 是左末点
           new-curve-edn (curve/curve->edn new-jcurve)
 
-          ^JoinResult jr (when (and (seq left-tp) (seq right-tp))
+          ^TParamsUtils$JoinResult jr (when (and (seq left-tp) (seq right-tp))
                            (TParamsUtils/join
                              (double-array left-tp) left-seg
                              (double-array right-tp) right-seg))

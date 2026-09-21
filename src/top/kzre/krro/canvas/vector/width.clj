@@ -25,9 +25,8 @@
   (:require [top.kzre.krro.canvas.vector.curve :as curve])
   (:import
     (top.kzre.curve.bezier2d ArcLengthUtils)
-    (top.kzre.krro.canvas.vector TParamsUtils)
-    (top.kzre.krro.canvas.vector.TParamsUtils
-      SplitResult JoinResult)))
+    (top.kzre.krro.canvas.vector TParamsUtils TParamsUtils$JoinResult TParamsUtils$SplitResult)
+    ))
 
 ;; ═══════════════════════════════════════
 ;; 挤出
@@ -66,7 +65,7 @@
    :point-width —— 按控制点索引切；连接点两侧各保留一份
                    left = [0..idx]，right = [idx..n-1]
    :t-width     —— 按 sr 的索引分组切；连接点两侧各保留一份"
-  [width-type samples ^SplitResult sr idx]
+  [width-type samples ^TParamsUtils$SplitResult sr idx]
   (case width-type
     :fixed       [nil nil]
 
@@ -97,7 +96,7 @@
    :fixed       —— nil（无采样）
    :point-width —— 左末 / 右首是连接点；其余按索引保留；连接点宽度取左右平均
    :t-width     —— 按 jr 的索引映射合并；连接点宽度取左右平均"
-  [width-type left-samples right-samples ^JoinResult jr]
+  [width-type left-samples right-samples ^TParamsUtils$JoinResult jr]
   (case width-type
     :fixed       nil
 

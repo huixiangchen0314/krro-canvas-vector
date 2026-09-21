@@ -24,8 +24,8 @@
   (:require
     [top.kzre.krro.canvas.vector.path   :as path])
   (:import
-    (top.kzre.krro.canvas.vector TParamsUtils)
-    (top.kzre.krro.canvas.vector.TParamsUtils DeleteResult)))
+    (top.kzre.krro.canvas.vector TParamsUtils TParamsUtils$DeleteResult)
+    ))
 
 ;; ═══════════════════════════════════════
 ;; 内部：t-params 维护
@@ -48,7 +48,7 @@
    返回 {:t-params [...] :kept-idx [...]} 或 {:t-params nil :kept-idx nil}。"
   [old-tp old-seg]
   (if (seq old-tp)
-    (let [^DeleteResult dr (TParamsUtils/deleteSegmentAt
+    (let [^TParamsUtils$DeleteResult dr (TParamsUtils/deleteSegmentAt
                              (double-array old-tp) old-seg (dec old-seg))]
       {:t-params (vec (.-tParams dr))
        :kept-idx (.-keptIdx dr)})

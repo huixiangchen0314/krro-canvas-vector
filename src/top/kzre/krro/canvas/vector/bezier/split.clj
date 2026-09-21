@@ -12,8 +12,8 @@
     [top.kzre.krro.canvas.vector.width :as width])
   (:import
     (top.kzre.curve.bezier2d Bezier2D Curve)
-    (top.kzre.krro.canvas.vector TParamsUtils)
-    (top.kzre.krro.canvas.vector.TParamsUtils SplitResult)))
+    (top.kzre.krro.canvas.vector TParamsUtils TParamsUtils$SplitResult)
+   ))
 
 ;; ═══════════════════════════════════════
 ;; 内部：path 派生
@@ -65,7 +65,7 @@
             old-samples (:width-samples path)
 
             ;; 一次判定：t-params + 索引分组
-            ^SplitResult sr (when (seq old-tp)
+            ^TParamsUtils$SplitResult sr (when (seq old-tp)
                               (TParamsUtils/splitAt
                                 (double-array old-tp) old-seg-count idx))
 

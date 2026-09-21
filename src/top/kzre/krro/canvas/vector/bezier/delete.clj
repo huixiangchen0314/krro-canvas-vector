@@ -25,8 +25,8 @@
   (:import
     (top.kzre.curve.bezier2d Bezier2D)
     (top.kzre.krro.canvas.vector.anchor Anchor)
-    (top.kzre.krro.canvas.vector TParamsUtils)
-    (top.kzre.krro.canvas.vector.TParamsUtils DeleteResult)))
+    (top.kzre.krro.canvas.vector TParamsUtils TParamsUtils$DeleteResult)
+    ))
 
 ;; ═══════════════════════════════════════
 ;; 内部：被删段索引
@@ -117,7 +117,7 @@
               old-samples   (:width-samples p)
 
               ;; t-params 重映射（Java）+ 保留索引
-              ^DeleteResult dr (when (seq old-tp)
+              ^TParamsUtils$DeleteResult dr (when (seq old-tp)
                                  (TParamsUtils/deleteSegmentAt
                                    (double-array old-tp) seg-count del-seg))
 

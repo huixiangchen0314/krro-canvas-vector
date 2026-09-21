@@ -41,51 +41,6 @@
         :dx1 (aget h1 0)  :dy1 (aget h1 1)
         :dx2 (aget h2 0)  :dy2 (aget h2 1)))))
 
-;; ═══════════════════════════════════════
-;; 内部：2D 仿射矩阵构造
-;; ═══════════════════════════════════════
-
-(defn- rotation-matrix
-  "绕 (cx, cy) 旋转 angle 弧度。返回 double[6] [a b c d tx ty]。"
-  [cx cy angle]
-  (let [c (Math/cos (double angle))
-        s (Math/sin (double angle))]
-    (double-array
-      [c s (- s) c
-       (+ (* cx (- 1.0 c)) (* s cy))
-       (- (* cy (- 1.0 c)) (* s cx))])))
-
-(defn- scaling-matrix
-  "以 (cx, cy) 为中心缩放 (sx, sy)。返回 double[6]。"
-  [cx cy sx sy]
-  (double-array
-    [sx 0.0 0.0 sy
-     (- cx (* sx cx))
-     (- cy (* sy cy))]))
-
-(defn- mirror-matrix
-  "沿经过 (px, py)、方向 (dx, dy) 的直线镜像。返回 double[6]。"
-  [px py dx dy]
-  (let [len (Math/sqrt (+ (* dx dx) (* dy dy)))
-        nx  (/ (- dy) len)
-        ny  (/ dx len)
-        a   (- 1.0 (* 2.0 nx nx))
-        b   (* -2.0 nx ny)
-        d   (- 1.0 (* 2.0 ny ny))
-        tx  (- px (+ (* a px) (* b py)))
-        ty  (- py (+ (* b px) (* d py)))]
-    (double-array [a b b d tx ty])))
-
-(defn- skew-matrix
-  "以 (cx, cy) 为中心斜切。
-   kx 为 X 方向斜切系数（点沿 Y 位移 x' = x + kx·y）。
-   ky 为 Y 方向斜切系数（点沿 X 位移 y' = y + ky·x）。
-   返回 double[6]。"
-  [cx cy kx ky]
-  (double-array
-    [1.0  kx  ky  1.0
-     (- (* ky cy))
-     (- (* kx cx))]))
 
 ;; ═══════════════════════════════════════
 ;; 内部：仿射变换应用
@@ -181,7 +136,7 @@
          (number? angle)]}
   (affine-transform-paths
     paths anchors
-    (rotation-matrix (:x center) (:y center) angle)))
+    (KMath/mat2dRotateMatrixD (:x center) (:y center) angle)))
 
 (defn scale-anchors
   "以 center 为中心缩放指定锚点。
@@ -195,7 +150,7 @@
          (number? sx) (number? sy)]}
   (affine-transform-paths
     paths anchors
-    (scaling-matrix (:x center) (:y center) sx sy)))
+    (KMath/mat2dScaleMatrixD (:x center) (:y center) sx sy)))
 
 (defn mirror-anchors
   "以 axis 为轴镜像指定锚点。
@@ -218,7 +173,7 @@
       (throw (ex-info "mirror axis direction must be non-zero"
                       {:axis axis})))
     (affine-transform-paths paths anchors
-                            (mirror-matrix px py dx dy))))
+                            (KMath/mat2dMirrorMatrixD px py dx dy))))
 
 (defn skew-anchors
   "以 center 为中心斜切指定锚点。
@@ -234,4 +189,4 @@
          (number? kx) (number? ky)]}
   (affine-transform-paths
     paths anchors
-    (skew-matrix (:x center) (:y center) kx ky)))
+    (KMath/mat2dSkewMatrixD (:x center) (:y center) kx ky)))
