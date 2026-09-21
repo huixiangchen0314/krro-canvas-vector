@@ -1,5 +1,9 @@
 package top.kzre.krro.canvas.vector;
 
+import top.kzre.curve.bezier2d.ArcLengthUtils;
+import top.kzre.curve.bezier2d.Curve;
+import top.kzre.curve.bezier2d.TableMapping;
+
 import java.util.Arrays;
 
 /**
@@ -394,6 +398,45 @@ public final class TParamsUtils {
         double[] out = new double[n];
         for (int i = 0; i < n; i++) {
             out[i] = 1.0 - oldTParams[n - 1 - i];
+        }
+        return out;
+    }
+
+    /**
+     * 按弧长比例重映射 t-params。
+     *
+     * <p>对每个旧 t：找它在旧曲线上的累积弧长比例，然后在新曲线上
+     * 找相同弧长比例对应的 t。
+     *
+     * <p>用于 reform / fit-segment 等改变曲线形状、希望采样点物理位置
+     * （弧长比例）保持不变的场景。
+     *
+     * <p>内部用 {@link ArcLengthUtils#sample} 构建两端的 {@link TableMapping}，
+     * 插值由 {@code getS} / {@code getT} 完成。
+     *
+     * @param oldTParams 旧 t 参数（升序 [0, 1]）
+     * @param oldCurve   旧曲线
+     * @param newCurve   新曲线
+     * @return 重映射后的 t 参数，长度 = oldTParams.length，升序
+     */
+    public static double[] remapByArcLength(double[] oldTParams,
+                                            Curve oldCurve, Curve newCurve) {
+        int n = oldTParams.length;
+        if (n == 0) return new double[0];
+
+        TableMapping oldMap = ArcLengthUtils.sample(oldCurve, 200);
+        TableMapping newMap = ArcLengthUtils.sample(newCurve, 200);
+
+        double oldMax = oldMap.getMaxS();
+        double newMax = newMap.getMaxS();
+
+        double[] out = new double[n];
+        for (int i = 0; i < n; i++) {
+            double sOld   = oldMap.getS(oldTParams[i]);           // 旧 t → 旧累计弧长
+            double sNorm  = (oldMax > 1e-12) ? sOld / oldMax : oldTParams[i];
+            out[i]        = (newMax > 1e-12)
+                    ? newMap.getT(sNorm * newMax)       // 归一化弧长 → 新 t
+                    : sNorm;
         }
         return out;
     }

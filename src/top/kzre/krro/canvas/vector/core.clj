@@ -9,9 +9,11 @@
    [top.kzre.krro.canvas.vector.bezier.continuity :as bezier.continuity]
    [top.kzre.krro.canvas.vector.bezier.delete :as bezier.delete]
    [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
+   [top.kzre.krro.canvas.vector.bezier.fit :as bezier.fit]
    [top.kzre.krro.canvas.vector.bezier.handle :as bezier.handle]
    [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
    [top.kzre.krro.canvas.vector.bezier.join :as bezier.join]
+   [top.kzre.krro.canvas.vector.bezier.reform :as bezier.reform]
    [top.kzre.krro.canvas.vector.bezier.reverse :as bezier.reverse]
    [top.kzre.krro.canvas.vector.bezier.split :as bezier.split]
    [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
@@ -240,6 +242,24 @@
   [path]
   (require-bezier "apply-constraints" (:path-type path))
   (bezier.continuity/apply-constraints path))
+
+(defn reform-path
+  "整条曲线重采样为 count 个控制点。返回新 path。"
+  [path count]
+  (require-bezier "reform-path" (:path-type path))
+  (bezier.reform/reform-path path count))
+
+(defn reform-range
+  "段范围 [fromSeg, toSeg] 重采样为 newSegCount 段。返回新 path。"
+  [path from-seg to-seg new-seg-count]
+  (require-bezier "reform-range" (:path-type path))
+  (bezier.reform/reform-range path from-seg to-seg new-seg-count))
+
+(defn fit-segment
+  "调整段 seg-idx 使其经过目标点。返回新 path。"
+  [path seg-idx local-t x y]
+  (require-bezier "fit-segment" (:path-type path))
+  (bezier.fit/fit-segment path seg-idx local-t x y))
 
 ;; ═══════════════════════════════════════
 ;; 渲染

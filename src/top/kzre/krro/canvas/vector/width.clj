@@ -22,7 +22,9 @@
 
    切分 / 合并时连接点采样只保留一份——切分时两侧各留一份，
    合并时丢弃右侧首份。连接点宽度由调用方决定（当前取左右平均）。"
+  (:require [top.kzre.krro.canvas.vector.curve :as curve])
   (:import
+    (top.kzre.curve.bezier2d ArcLengthUtils)
     (top.kzre.krro.canvas.vector TParamsUtils)
     (top.kzre.krro.canvas.vector.TParamsUtils
       SplitResult JoinResult)))
@@ -171,3 +173,103 @@
     samples
     (when (seq samples)
       (vec (reverse samples)))))
+
+;; ═══════════════════════════════════════
+;; 内部：按参数位置在采样数组上插值
+;; ═══════════════════════════════════════
+
+(defn- sample-at-t
+  "在 old-samples 上按参数位置 t ∈ [0,1] 线性插值。
+   old-samples[i] 对应参数位置 i/(n-1)。"
+  ^double [samples ^double t]
+  (let [n   (count samples)
+        pos (* t (dec n))
+        lo  (int (Math/floor pos))
+        hi  (min (dec n) (inc lo))
+        frac (- pos lo)]
+    (if (= lo hi)
+      (double (nth samples lo))
+      (+ (* (- 1.0 frac) (double (nth samples lo)))
+         (* frac (double (nth samples hi)))))))
+
+;; ═══════════════════════════════════════
+;; 按弧长比例重采样
+;; ═══════════════════════════════════════
+
+(defn resample-by-arc
+  "按弧长比例重采样采样数组。
+
+   新采样点在新曲线上均匀分布（参数位置 j/(new-count-1)），
+   每个点对应一个弧长比例；在旧曲线上找相同弧长比例的位置，
+   在旧采样值上按该位置插值。
+
+   old-samples     —— 旧采样数组
+   old-curve-edn   —— 旧曲线 EDN
+   new-curve-edn   —— 新曲线 EDN
+   new-count       —— 新采样数
+
+   空输入返回原值。"
+  [old-samples old-curve-edn new-curve-edn new-count]
+  (if (empty? old-samples)
+    old-samples
+    (let [j-old   (curve/edn->curve old-curve-edn)
+          j-new   (curve/edn->curve new-curve-edn)
+          old-map (ArcLengthUtils/sample j-old 200)
+          new-map (ArcLengthUtils/sample j-new 200)
+          old-max (.getMaxS old-map)
+          new-max (.getMaxS new-map)]
+      (mapv (fn [j]
+              (let [new-t  (/ (double j) (double (dec new-count)))
+                    s-new  (.getS new-map new-t)
+                    s-norm (if (> new-max 1e-12) (/ s-new new-max) new-t)
+                    s-old  (* s-norm old-max)
+                    old-t  (if (> old-max 1e-12) (.getT old-map s-old) s-norm)]
+                (sample-at-t old-samples old-t)))
+            (range new-count)))))
+
+
+;; ═══════════════════════════════════════
+;; 重构
+;; ═══════════════════════════════════════
+
+(defn resample-samples
+  "曲线形状变化后重采样采样数组。返回 {:width-samples ... :t-params ...}。
+
+   nil 表示「不修改该字段」。
+
+   :fixed       —— 清空 width-samples / t-params
+   :point-width —— width-samples 按弧长重采样到 new-point-count
+   :t-width     —— width-samples 保留；t-params 按弧长比重映射
+
+   old-curve-edn / new-curve-edn 用于弧长计算。
+   new-point-count 是重采样后曲线的新控制点数（reform 时可能变化，
+   fit-segment 时不变）。"
+  [width-type old-samples old-tp
+   old-curve-edn new-curve-edn new-point-count]
+  (case width-type
+    :fixed       {:width-samples nil :t-params nil}
+
+    :point-width {:width-samples (resample-by-arc
+                                   old-samples old-curve-edn new-curve-edn
+                                   new-point-count)
+                  :t-params      nil}
+
+    :t-width     {:width-samples old-samples
+                  :t-params      (when (seq old-tp)
+                                   (let [j-old (curve/edn->curve old-curve-edn)
+                                         j-new (curve/edn->curve new-curve-edn)]
+                                     (vec (TParamsUtils/remapByArcLength
+                                            (double-array old-tp) j-old j-new))))}
+
+    :curve       (throw (ex-info "Curve width type not supported for resample"
+                                 {:width-type width-type}))))
+
+(defn apply-samples
+  "把 reform-samples 返回的 changes 应用到 path。
+   :fixed 类型下额外清空 width-samples / t-params 字段。
+   —— 也可留在调用方，看是否需要统一。"
+  [path width-type {:keys [width-samples t-params]}]
+  (cond-> path
+          (= width-type :fixed) (dissoc :width-samples :t-params)
+          (some? width-samples) (assoc :width-samples width-samples)
+          (some? t-params)      (assoc :t-params t-params)))
