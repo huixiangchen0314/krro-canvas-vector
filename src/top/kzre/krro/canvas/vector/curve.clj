@@ -5,7 +5,36 @@
   (:require [clojure.spec.alpha :as s])
   (:import (java.util ArrayList Collection)
            [top.kzre.curve.bezier2d
-            AABB ClosestPointResult ControlPoint Curve Pair]))
+            AABB ClosestPointResult Continuity ControlPoint Curve Pair]))
+
+;; ═══════════════════════════════════════
+;; Continuity 双向映射
+;; ═══════════════════════════════════════
+
+(def ^:private kw->continuity
+  {:none Continuity/NONE
+   :g1   Continuity/G1
+   :c1   Continuity/C1
+   :g2   Continuity/G2
+   :c2   Continuity/C2})
+
+(def ^:private continuity->kw
+  {Continuity/NONE :none
+   Continuity/G1   :g1
+   Continuity/C1   :c1
+   Continuity/G2   :g2
+   Continuity/C2   :c2})
+
+(defn- edn->continuity
+  "EDN keyword → Java Continuity。
+   缺省或未知时返回 NONE。"
+  ^Continuity [kw]
+  (or (kw->continuity kw) Continuity/NONE))
+
+(defn- continuity->edn
+  "Java Continuity → EDN keyword。"
+  [^Continuity c]
+  (get continuity->kw c :none))
 
 ;; ═══════════════════════════════════════
 ;; EDN → Java
@@ -15,10 +44,10 @@
   "EDN 控制点 → Java ControlPoint。"
   ^ControlPoint [p]
   (ControlPoint.
-    (double (:x p)) (double (:y p))
+    (double (:x p))   (double (:y p))
     (double (:dx1 p)) (double (:dy1 p))
     (double (:dx2 p)) (double (:dy2 p))
-    (boolean (:g1 p))))
+    (edn->continuity (:continuity p))))
 
 (defn edn->curve
   "EDN 曲线 → Java Curve（新分配）。"
@@ -39,10 +68,10 @@
 (defn point->edn
   "Java ControlPoint → EDN 控制点。"
   [^ControlPoint p]
-  {:x   (.getX p)   :y   (.getY p)
-   :dx1 (.getDx1 p) :dy1 (.getDy1 p)
-   :dx2 (.getDx2 p) :dy2 (.getDy2 p)
-   :g1  (.isG1 p)})
+  {:x          (.getX p)   :y   (.getY p)
+   :dx1        (.getDx1 p) :dy1 (.getDy1 p)
+   :dx2        (.getDx2 p) :dy2 (.getDy2 p)
+   :continuity (continuity->edn (.getContinuity p))})
 
 (defn curve->edn
   "Java Curve → EDN 曲线。"
@@ -78,11 +107,13 @@
 (s/def ::dy1 number?)
 (s/def ::dx2 number?)
 (s/def ::dy2 number?)
-(s/def ::g1 boolean?)
+
+(s/def ::continuity #{:none :g1 :c1 :g2 :c2})
 
 (s/def ::point (s/keys :req-un [::x ::y]))
 (s/def ::control-point
-  (s/keys :req-un [::x ::y ::dx1 ::dy1 ::dx2 ::dy2 ::g1]))
+  (s/keys :req-un [::x ::y ::dx1 ::dy1 ::dx2 ::dy2]
+          :opt-un [::continuity]))   ; 缺省视作 :none
 
 (s/def ::closed boolean?)
 (s/def ::points (s/coll-of ::control-point :kind vector? :min-count 2))

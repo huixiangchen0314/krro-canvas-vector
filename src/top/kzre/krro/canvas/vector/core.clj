@@ -4,14 +4,15 @@
    类型相关的操作（变换 / 插点 / 挤出）在本 ns 按 :path-type 分派。
    当前仅支持 :bezier——catmull-rom 分派时抛异常。"
   (:require
-    [top.kzre.krro.canvas.vector.layer]
-    [top.kzre.krro.canvas.vector.path]
-    [top.kzre.krro.canvas.vector.anchor]
-    [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
-    [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
-    [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
-    [top.kzre.krro.canvas.vector.composite]
-    [top.kzre.krro.core.util.re-export :refer [re-export]]))
+   [top.kzre.krro.canvas.vector.anchor]
+   [top.kzre.krro.canvas.vector.bezier.extrude    :as bezier.extrude]
+   [top.kzre.krro.canvas.vector.bezier.insert     :as bezier.insert]
+   [top.kzre.krro.canvas.vector.bezier.join :as bezier.join]
+   [top.kzre.krro.canvas.vector.bezier.transform :as bezier.transform]
+   [top.kzre.krro.canvas.vector.composite]
+   [top.kzre.krro.canvas.vector.layer]
+   [top.kzre.krro.canvas.vector.path]
+   [top.kzre.krro.core.util.re-export :refer [re-export]]))
 
 ;; ═══════════════════════════════════════
 ;; Layer 结构
@@ -145,6 +146,14 @@
   [paths anchor point]
   (require-bezier "extrude-anchor" (get-in paths [(:path-id anchor) :path-type]))
   (bezier.extrude/extrude-anchor paths anchor point))
+
+(defn join-paths
+  "合并两条曲线。要求 :bezier 非闭合。
+   返回新 path——从 left 派生。"
+  [left right]
+  (require-bezier "join-paths" (:path-type left))
+  (require-bezier "join-paths" (:path-type right))
+  (bezier.join/join-paths left right))
 
 ;; ═══════════════════════════════════════
 ;; 渲染
