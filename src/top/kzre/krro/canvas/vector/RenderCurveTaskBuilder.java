@@ -228,7 +228,7 @@ public final class RenderCurveTaskBuilder {
             CurveFlattener flattener;
             double maxWidth;
             if (stroke != null && stroke.widthFunc != null) {
-                maxWidth = stroke.widthFunc.max();
+                maxWidth = stroke.widthFunc.maxWidth();
                 flattener = new AdaptiveFlattener(stroke.widthFunc, widthTolerance);
             } else {
                 double width = (stroke != null) ? stroke.width : 1.0;

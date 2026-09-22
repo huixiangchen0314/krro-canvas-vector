@@ -11,12 +11,12 @@ public final class FixedWidthFunction implements WidthFunction {
     }
 
     @Override
-    public double map(double x) {
+    public double map(double s) {
         return width;
     }
 
     @Override
-    public double max() {
+    public double maxWidth() {
         return width;
     }
 
