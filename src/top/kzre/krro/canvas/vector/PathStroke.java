@@ -1,7 +1,5 @@
 package top.kzre.krro.canvas.vector;
 
-import top.kzre.krro.util.math.KMath;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,8 +8,10 @@ import java.util.List;
  * <p>
  * 内侧拐角按偏移直线求交输出单点，外侧拐角按 join 策略填充缺口。
  * </p>
+ *
  */
 public final class PathStroke extends PathRenderer {
+    public static final double PARALLEL_EPS = 1e-6;
     private final CapStrategy cap;
     private final JoinStrategy join;
     private final double miterLimit;
@@ -207,13 +207,16 @@ public final class PathStroke extends PathRenderer {
      * 两条参数直线求交：
      *   L1: P1 + t * d1
      *   L2: P2 + s * d2
-     * 结果写入 tmpX / tmpY。平行或近乎平行时返回 false。
+     * 结果写入 tmpX / tmpY。
+     * 方向向量必须是单位向量：此时分母 {@code d1 × d2 = sin θ}，
+     * 当 {@code |sin θ| < }{@link #PARALLEL_EPS} 时返回 false，
+     * 由调用方走退化分支。
      */
     private boolean intersectLines(
             double px1, double py1, double dx1, double dy1,
             double px2, double py2, double dx2, double dy2) {
         double denom = dx1 * dy2 - dy1 * dx2;
-        if (Math.abs(denom) < 1e-12) return false;
+        if (Math.abs(denom) < PARALLEL_EPS) return false;
         double t = ((px2 - px1) * dy2 - (py2 - py1) * dx2) / denom;
         tmpX = px1 + t * dx1;
         tmpY = py1 + t * dy1;

@@ -15,6 +15,7 @@ public final class CurveClipper {
     private static final int MAX_SUBDIVIDE_DEPTH = 10;
 
     /**
+     * TODO 在 t 宽度情况下可能出现覆盖不足
      * 计算曲线实际经过的瓦片集合（含描边宽度扩展）。
      *
      * @param halfWidth 视口空间半宽（曲线已预乘视口变换，宽度需调用方乘 scale 换算）
