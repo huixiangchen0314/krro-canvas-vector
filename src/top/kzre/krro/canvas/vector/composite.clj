@@ -36,9 +36,9 @@
   "将 Clojure 关键字转换为 Cap 枚举。"
   [kw]
   (case kw
-    :butt Cap/BUTT
+    :square Cap/SQUARE
     :round Cap/ROUND
-    Cap/SQUARE))
+    Cap/BUTT))
 
 (defn- keyword->join
   "将 Clojure 关键字转换为 Join 枚举。"

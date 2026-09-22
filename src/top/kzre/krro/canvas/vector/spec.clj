@@ -3,16 +3,16 @@
    路径以 map 存储（键为 id），顺序由 vector 定义，支持渲染缓存与单个脏矩形增量更新。
    路径支持携带宽度采样数据 (width-samples + arc-params) 以实现可变宽度描边。"
   (:require [clojure.spec.alpha :as s]
-            [top.kzre.krro.curve.bezier2d.spec :as bezier]
-            [top.kzre.krro.curve.catmullrom2d.spec :as cr]
-            [top.kzre.krro.canvas.core.layer.spec :as layer-spec]))
+            [top.kzre.krro.canvas.core.layer.spec :as layer-spec]
+            [top.kzre.krro.canvas.vector.crcurve :as crcurve]
+            [top.kzre.krro.canvas.vector.curve :as curve]))
 
 ;; ── 路径类型分派 ──────────────────────────────────
 (s/def ::path-type #{:bezier :catmull-rom})
 
 ;; ── Bézier 路径 ───────────────────────────────────
-(s/def ::curve ::bezier/curve)
-(s/def ::width-curve ::bezier/curve)
+(s/def ::curve ::curve/curve)
+(s/def ::width-curve ::curve)
 ;; 宽度采样数据：等弧长采样宽度序列 与 对应的弧长参数序列
 (s/def ::width-samples (s/coll-of number? :kind vector?))
 (s/def ::arc-params (s/coll-of number? :kind vector?))
@@ -20,7 +20,7 @@
                              :opt-un [::width-samples ::arc-params ::width-curve]))
 
 ;; ── Catmull‑Rom 路径 ─────────────────────────────
-(s/def ::curve ::cr/curve)
+(s/def ::curve ::crcurve/curve)
 (s/def ::catmull-rom-path (s/keys :req-un [::path-type ::curve]
                                   :opt-un [::width-samples ::arc-params ::width-curve]))
 
