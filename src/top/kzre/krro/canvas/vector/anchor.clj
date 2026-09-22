@@ -164,8 +164,9 @@
   (when-let [p (path-of-anchor paths anchor)]
     (let [idxs (keep identity (anchor-seg-idxs paths anchor))]
       (if (seq idxs)
-        (CurveClipper/segTilesForIdxs (path/path->curve p)
-                                      (int-array idxs)
-                                      (int tile-size)
-                                      (path/max-path-half-width p))
+        (set
+          (CurveClipper/segTilesForIdxs (path/path->curve p)
+                                        (int-array idxs)
+                                        (int tile-size)
+                                        (path/max-path-half-width p)))
         #{}))))

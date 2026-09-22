@@ -146,22 +146,24 @@
             (assoc :arc-params arc)))
 
       :t-width
-      (let [t-params (or (:t-params path)
-                         (if (delay? t-params) @t-params t-params)
-                         (uniform-t-params num-points))
-            _ (when (not= (count t-params) num-points)
-                (throw (ex-info "t-params length must equal control points"
-                                {:expected num-points :actual (count t-params)})))
-            samples (or (:width-samples path)
-                        (if (delay? width-samples) @width-samples width-samples)
-                        (vec (repeat num-points default-width)))
-            _ (when (not= (count samples) num-points)
-                (throw (ex-info "width-samples length must equal t-params"
-                                {:expected (count t-params) :actual (count samples)})))
-            arc (or (:arc-params path)
-                    (if (delay? arc-params) @arc-params arc-params)
-                    (when compute-arc?
-                      (compute-arc-params path t-params)))]
+      (let [samples  (or (:width-samples path)
+                         (if (delay? width-samples) @width-samples width-samples))
+            t-params (or (:t-params path)
+                         (if (delay? t-params) @t-params t-params))
+            _        (when-not (or samples t-params)
+                       (throw (ex-info "t-width requires :width-samples or :t-params"
+                                       {:path path})))
+            n        (count (or samples t-params))       ; ← 采样数——不是 num-points
+            samples  (or samples (vec (repeat n default-width)))
+            t-params (or t-params (uniform-t-params n))  ; ← 基于采样数
+            _        (when (not= (count samples) (count t-params))
+                       (throw (ex-info "width-samples / t-params length mismatch"
+                                       {:samples  (count samples)
+                                        :t-params (count t-params)})))
+            arc      (or (:arc-params path)
+                         (if (delay? arc-params) @arc-params arc-params)
+                         (when compute-arc?
+                           (compute-arc-params path t-params)))]
         (-> path
             (dissoc :width-curve)
             (assoc :t-params t-params)
@@ -210,6 +212,7 @@
                                 (int tile-size)
                                 (max-path-half-width path)))))
 
+;; TODO fill 样式处理
 (defn path-tiles
   "整条路径经过的瓦片集合（含描边宽度扩展）。"
   [path tile-size]
@@ -218,6 +221,24 @@
   (set (CurveClipper/curveTiles (path->curve path)
                                 (int tile-size)
                                 (max-path-half-width path))))
+
+(defn recompute-arc-params
+  "根据当前曲线和 t-params 重新计算弧长参数。
+   返回新 path——仅替换 :arc-params。
+
+   :point-width —— 无 :t-params——按控制点数生成均匀 t-params 后计算
+   :t-width     —— 用已有 :t-params 计算
+   :fixed / :curve —— 无 arc-params——原样返回"
+  [path]
+  {:pre [(valid-path? path)]}
+  (case (path-width-type path)
+    (:fixed :curve) path
+    :point-width    (assoc path :arc-params
+                                (compute-arc-params
+                                  path
+                                  (uniform-t-params (path-point-count path))))
+    :t-width        (assoc path :arc-params
+                                (compute-arc-params path (:t-params path)))))
 
 ;; ═══════════════════════════════════════
 ;; AABB（不含描边宽度）

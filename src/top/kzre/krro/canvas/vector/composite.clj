@@ -1,24 +1,25 @@
 (ns top.kzre.krro.canvas.vector.composite
   (:require
-    [taoensso.tufte :refer [p profile]]
-    [top.kzre.krro.canvas.core.layer.render.composite :as composite]
-    [top.kzre.krro.canvas.core.layer.util :as lu]
-    [top.kzre.krro.canvas.vector.path :as vector.path]
-    [top.kzre.krro.core.util.promise :as promise])
+   [taoensso.timbre :as log]
+   [taoensso.tufte :refer [p profile]]
+   [top.kzre.krro.canvas.core.layer.render.composite :as composite]
+   [top.kzre.krro.canvas.core.layer.util :as lu]
+   [top.kzre.krro.canvas.vector.path :as vector.path]
+   [top.kzre.krro.core.util.promise :as promise])
   (:import
-    [java.util Collection]
-    (top.kzre.curve.bezier2d Bezier2D)
-    (top.kzre.krro.canvas.core.layer PixelBlitter PixelBlitter$BlitterRequest)
-    (top.kzre.krro.canvas.vector
-      AntiAlias
-      ArcLengthSampleWidthFunc
-      Cap
-      FillRule
-      FixedWidthFunction
-      Join
-      RenderCurveTaskBuilder)
-    [top.kzre.krro.util.math KMath]
-    [top.kzre.krro.util.tile TiledCanvas]))
+   [java.util Collection]
+   (top.kzre.curve.bezier2d Bezier2D)
+   (top.kzre.krro.canvas.core.layer PixelBlitter PixelBlitter$BlitterRequest)
+   (top.kzre.krro.canvas.vector
+    AntiAlias
+    ArcLengthSampleWidthFunc
+    Cap
+    FillRule
+    FixedWidthFunction
+    Join
+    RenderCurveTaskBuilder)
+   [top.kzre.krro.util.math KMath]
+   [top.kzre.krro.util.tile TiledCanvas]))
 
 
 
@@ -188,11 +189,53 @@
         (:path-order layer)))
 
 
+
+(defn- check-arc-params
+  "渲染前校验弧长参数。
+   对 :point-width / :t-width 的 path：
+     - :arc-params 应存在
+     - :arc-params 长度应与 :width-samples 一致
+   不满足则重新计算并输出警告。返回可能修正过的 layer。
+
+   注意：修正只作用于当前渲染用的 layer——不写回 record。"
+  [layer]
+  (let [paths (:paths layer)
+        fixed
+        (reduce-kv
+          (fn [acc path-id path]
+            (let [wt (vector.path/path-width-type path)]
+              (if (contains? #{:point-width :t-width} wt)
+                (let [arc-params (:arc-params path)
+                      samples    (:width-samples path)
+                      arc-len    (count arc-params)
+                      smp-len    (count samples)]
+                  (if (or (nil? arc-params)
+                          (not= arc-len smp-len))
+                    (do
+                      (log/warn "vector render: invalid arc-params——recomputing"
+                                {:path-id      path-id
+                                 :width-type   wt
+                                 :reason       (if (nil? arc-params)
+                                                 :missing
+                                                 :length-mismatch)
+                                 :arc-len      arc-len
+                                 :samples-len  smp-len})
+                      (assoc acc path-id
+                                 (vector.path/recompute-arc-params path)))
+                    acc))
+                acc)))
+          paths
+          paths)]
+    (if (identical? paths fixed)
+      layer
+      (assoc layer :paths fixed))))
+
 (defn render-to-canvas!
   "把矢量图层的曲线渲染到临时画布。
    前置条件：调用方负责 tmp 的创建与清理。"
   [layer ^TiledCanvas tmp {:keys [view-width view-height dirty-tiles]}]
-  (let [antialias (:antialias layer true)
+  (let [layer (check-arc-params layer)
+        antialias (:antialias layer true)
         flatness  (:flatness layer 0.25)
         {:keys [scale-x scale-y xform]}
         (transform-info (:transform layer))
@@ -214,6 +257,7 @@
 
     (p :run-render-task (.run task))
     nil))
+
 
 (defmethod composite/composite-layer :vector
   [layer ^TiledCanvas canvas

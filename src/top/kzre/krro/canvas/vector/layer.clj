@@ -39,7 +39,25 @@
         (update :paths dissoc path-id)
         (update :path-order (fn [order] (into [] (remove excluded) order))))))
 
+(defn save-paths
+  "批量 save。paths-map = {path-id path-data}。
+   等价于对每个 entry 调 save-path——一次 reduce——语义一致。"
+  [layer paths-map]
+  (reduce (fn [l [path-id path]]
+            (save-path l path-id path))
+          layer
+          paths-map))
 
+(defn delete-paths
+  "批量 delete。path-ids 是 id 的集合（或 seq）。
+   等价于对每个 id 调 delete-path。"
+  [layer path-ids]
+  (let [excluded (set path-ids)]
+    (-> layer
+        (update :paths (fn [paths]
+                         (apply dissoc paths excluded)))
+        (update :path-order (fn [order]
+                              (into [] (remove excluded) order))))))
 
 
 (defn make-vector-layer

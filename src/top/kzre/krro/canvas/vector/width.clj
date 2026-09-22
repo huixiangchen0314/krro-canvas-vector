@@ -37,19 +37,18 @@
 
    :fixed       —— 不变（无采样）
    :point-width —— 头部：在首部插入 w；尾部：在末尾追加 w
-   :t-width     —— 不变（采样独立于控制点数）
+   :t-width     —— 与 :point-width 相同——extrude 新增控制点，
+                   该端点需要对应的宽度采样；t-params 由 TParamsUtils
+                   的 extrudeHead/Tail 同步加一个位置。
 
    w 为新采样值，由调用方提供（通常复制相邻端点采样值）。"
   [width-type samples w is-start?]
   (case width-type
-    :fixed       samples
-
-    :point-width (when (seq samples)
-                   (if is-start?
-                     (vec (cons (double w) samples))
-                     (conj (vec samples) (double w))))
-
-    :t-width     samples))
+    :fixed                samples
+    (:point-width :t-width) (when (seq samples)
+                              (if is-start?
+                                (vec (cons (double w) samples))
+                                (conj (vec samples) (double w))))))
 
 ;; ═══════════════════════════════════════
 ;; 切分

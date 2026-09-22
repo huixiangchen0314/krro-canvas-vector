@@ -21,6 +21,7 @@
    [top.kzre.krro.canvas.vector.composite]
    [top.kzre.krro.canvas.vector.layer]
    [top.kzre.krro.canvas.vector.path]
+   [ top.kzre.krro.canvas.vector.width-adjust]
    [top.kzre.krro.core.util.re-export :refer [re-export]]))
 
 ;; ═══════════════════════════════════════
@@ -31,7 +32,8 @@
   [top.kzre.krro.canvas.vector.layer
    :refer
    [paths path-order fresh-path-id
-    save-path delete-path make-vector-layer]])
+    save-path delete-path save-paths delete-paths
+    make-vector-layer]])
 
 ;; ═══════════════════════════════════════
 ;; Path 结构 / 宽度 / 几何 / 脏区域
@@ -63,6 +65,10 @@
     anchors-centroid
     anchor-tiles]])
 
+(re-export
+  [top.kzre.krro.canvas.vector.width-adjust
+   :refer
+   [adjust-widths]])
 
 ;; ═══════════════════════════════════════
 ;; 分派 helper

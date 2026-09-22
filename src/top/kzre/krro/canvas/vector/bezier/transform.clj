@@ -92,7 +92,7 @@
    返回新 paths。"
   [paths translations]
   {:pre [(map? paths)
-         (sequential? translations)
+         (coll? translations)
          (every? #(instance? AnchorTranslation %) translations)]}
   (reduce (fn [acc [path-id ts]]
             (if-let [p (get acc path-id)]
@@ -105,7 +105,7 @@
   "对一组锚点施加统一偏移。返回新 paths。"
   [paths anchors dx dy]
   {:pre [(map? paths)
-         (sequential? anchors)
+         (coll? anchors)
          (every? #(instance? Anchor %) anchors)
          (number? dx)
          (number? dy)]}
@@ -129,7 +129,7 @@
    center 为 {:x :y}。返回新 paths。"
   [paths anchors center angle]
   {:pre [(map? paths)
-         (sequential? anchors)
+         (coll? anchors)
          (every? #(instance? Anchor %) anchors)
          (map? center)
          (number? (:x center)) (number? (:y center))
@@ -143,7 +143,7 @@
    sx / sy 为缩放因子（1.0 表示不缩放）。返回新 paths。"
   [paths anchors center sx sy]
   {:pre [(map? paths)
-         (sequential? anchors)
+         (coll? anchors)
          (every? #(instance? Anchor %) anchors)
          (map? center)
          (number? (:x center)) (number? (:y center))
@@ -158,7 +158,7 @@
    direction 是轴线方向向量，必须非零。返回新 paths。"
   [paths anchors axis]
   {:pre [(map? paths)
-         (sequential? anchors)
+         (coll? anchors)
          (every? #(instance? Anchor %) anchors)
          (map? axis)
          (map? (:point axis))
@@ -182,7 +182,7 @@
    center 为 {:x :y}。返回新 paths。"
   [paths anchors center kx ky]
   {:pre [(map? paths)
-         (sequential? anchors)
+         (coll? anchors)
          (every? #(instance? Anchor %) anchors)
          (map? center)
          (number? (:x center)) (number? (:y center))
